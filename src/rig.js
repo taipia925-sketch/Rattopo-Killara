@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import {DecalGeometry} from '../lib/geometries/DecalGeometry.js';
 export const strip=n=>n.replace(/^.*?mixamorig\d*:?/,'').replace(/^.*:/,'').replace(/_\d+$/,'');
 // informazioni sullo scheletro (tutte le copie dello stesso osso, se il modello ne ha più di una)
 export function rigInfo(root){root.updateMatrixWorld(true);const bones={},all={};root.traverse(o=>{if(o.isBone){const k=strip(o.name);(all[k]=all[k]||[]).push(o);if(!bones[k])bones[k]=o;}});
@@ -17,40 +16,30 @@ export function buildClip(lib,key,rig){const c=lib.clips[key];if(!c)return null;
  for(const h of rig.hips){const v=new Float32Array(n*3);for(let i=0;i<n;i++){const k=n>1?i/(n-1):0;p.set((hp[i*3]-(x0+(x1-x0)*k))*L,hp[i*3+1]*L,(hp[i*3+2]-(z0+(z1-z0)*k))*L).applyMatrix4(h.pmi);p.toArray(v,i*3);}
   tracks.push(new THREE.VectorKeyframeTrack(h.b.name+'.position',times,v));}
  const cl=new THREE.AnimationClip(key,c.d,tracks);cl.adv=Math.hypot(x1-x0,z1-z0);return cl;}
-// faccia proiettata sulla testa: decal calcolato sulla posa reale (dopo lo skinning) e riportato nello spazio dello scheletro
-const comp=(a,i,k)=>k===0?a.getX(i):k===1?a.getY(i):k===2?a.getZ(i):a.getW(i);
-const HIDE=/hair|moustache|earring|helmet|visor/i;
-function skinMatrix(m,j,cache){let M=cache.get(j);if(M)return M;const si=m.geometry.attributes.skinIndex,sw=m.geometry.attributes.skinWeight,sk=m.skeleton;
- const S=new THREE.Matrix4().set(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0),B=new THREE.Matrix4();
- for(let k=0;k<4;k++){const w=comp(sw,j,k);if(!w)continue;const bi=comp(si,j,k);B.multiplyMatrices(sk.bones[bi].matrixWorld,sk.boneInverses[bi]);for(let e=0;e<16;e++)S.elements[e]+=B.elements[e]*w;}
- M=new THREE.Matrix4().multiplyMatrices(m.matrixWorld,m.bindMatrixInverse).multiply(S).multiply(m.bindMatrix);cache.set(j,M);return M;}
-export function applyFace(root,tex,opts={}){root.updateMatrixWorld(true);
- const meshes=[];root.traverse(o=>{if(o.isSkinnedMesh)meshes.push(o);});
- const B=rigInfo(root).bones,wp=b=>b.getWorldPosition(new THREE.Vector3());
- const head=wp(B.Head),top=B.HeadTop_End?wp(B.HeadTop_End):null,neck=wp(B.Neck);
- const v=new THREE.Vector3(),pts=[];let topY=top?top.y:-1e9,maxZ=-1e9,minX=1e9,maxX=-1e9;
- const world=new Map();
- for(const m of meshes){if(HIDE.test(m.name))continue;const pos=m.geometry.attributes.position,arr=new Float32Array(pos.count*3);world.set(m,arr);
-  for(let i=0;i<pos.count;i++){v.fromBufferAttribute(pos,i);m.applyBoneTransform(i,v);v.applyMatrix4(m.matrixWorld);arr[i*3]=v.x;arr[i*3+1]=v.y;arr[i*3+2]=v.z;
-   if(v.y<neck.y||Math.abs(v.x-head.x)>.3*(head.y-neck.y+.3))continue;pts.push({m,i,p:v.clone()});if(!top)topY=Math.max(topY,v.y);}}
- const hh=topY-head.y,chin=head.y-hh*(opts.chin??.3);
- for(const q of pts){if(q.p.y<chin||q.p.y>topY)continue;maxZ=Math.max(maxZ,q.p.z);if(q.p.y>head.y&&q.p.y<head.y+hh*.6){minX=Math.min(minX,q.p.x);maxX=Math.max(maxX,q.p.x);}}
- if(maxZ<-1e8)return null;
- const H=(topY-chin)*(opts.h??1.12),W=Math.max(H*.8,(maxX-minX)*(opts.w??1.05)),D=Math.max(.05,(maxX-minX)*.75);
- const pos=new THREE.Vector3(head.x,(chin+topY)/2+(opts.dy??0)*H,maxZ-D*.45);
- const mat=new THREE.MeshStandardMaterial({map:tex,transparent:true,alphaTest:.45,roughness:.6,metalness:0,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
- const out=[];
- for(const m of meshes){if(HIDE.test(m.name)){m.visible=false;continue;}const mine=pts.filter(p=>p.m===m);if(!mine.length)continue;
-  const tg=new THREE.BufferGeometry();tg.setAttribute('position',new THREE.BufferAttribute(world.get(m),3));tg.setAttribute('normal',m.geometry.attributes.normal);if(m.geometry.index)tg.setIndex(m.geometry.index);
-  const tm=new THREE.Mesh(tg);tm.updateMatrixWorld(true);
-  const g=new DecalGeometry(tm,pos,new THREE.Euler(0,0,0),new THREE.Vector3(W,H,D));if(!g.attributes.position.count)continue;
-  const P=g.attributes.position,n=P.count,SI=new Uint16Array(n*4),SW=new Float32Array(n*4),N=new Float32Array(n*3),cache=new Map(),Mi=new THREE.Matrix4();
-  const si=m.geometry.attributes.skinIndex,sw=m.geometry.attributes.skinWeight,sn=m.geometry.attributes.normal,nv=new THREE.Vector3();
-  for(let i=0;i<n;i++){v.fromBufferAttribute(P,i);let bd=1e9,bi=0;for(const q of mine){const dd=q.p.distanceToSquared(v);if(dd<bd){bd=dd;bi=q.i;}}
-   for(let k=0;k<4;k++){SI[i*4+k]=comp(si,bi,k);SW[i*4+k]=comp(sw,bi,k);}
-   nv.fromBufferAttribute(sn,bi);N[i*3]=nv.x;N[i*3+1]=nv.y;N[i*3+2]=nv.z;
-   Mi.copy(skinMatrix(m,bi,cache)).invert();v.applyMatrix4(Mi);P.setXYZ(i,v.x,v.y,v.z);}
-  g.setAttribute('skinIndex',new THREE.BufferAttribute(SI,4));g.setAttribute('skinWeight',new THREE.BufferAttribute(SW,4));g.setAttribute('normal',new THREE.BufferAttribute(N,3));
-  const dm=new THREE.SkinnedMesh(g,mat);dm.position.copy(m.position);dm.quaternion.copy(m.quaternion);dm.scale.copy(m.scale);dm.frustumCulled=false;dm.renderOrder=2;
-  m.parent.add(dm);dm.bind(m.skeleton,m.bindMatrix);out.push(dm);}
- return{meshes:out,mat};}
+/* testa 3D ricavata dalla foto ritagliata: stessa sagoma della foto, gonfiata con un po' di volume (davanti la foto, dietro i capelli).
+   Va al posto della testa del modello (cappucci, maschere ed elmi spariscono con lei) e segue l'osso della testa in ogni animazione. */
+const HEADS=new Map();
+export function makeHead(tex){const img=tex.image;let H=HEADS.get(img);
+ if(!H){const N=72,iw=img.width,ih=img.height,gw=N,gh=Math.round(N*ih/iw),c=document.createElement('canvas');c.width=gw+1;c.height=gh+1;const x=c.getContext('2d',{willReadFrequently:true});
+  x.drawImage(img,0,0,gw+1,gh+1);const px=x.getImageData(0,0,gw+1,gh+1).data,A=(i,j)=>px[(j*(gw+1)+i)*4+3]/255;
+  // distanza dal bordo della sagoma (passate avanti/indietro) → volume
+  const W1=gw+1,D=new Float32Array(W1*(gh+1));for(let j=0;j<=gh;j++)for(let i=0;i<=gw;i++)D[j*W1+i]=A(i,j)>.5?1e9:0;
+  for(let j=0;j<=gh;j++)for(let i=0;i<=gw;i++){const k=j*W1+i;if(i>0)D[k]=Math.min(D[k],D[k-1]+1);if(j>0)D[k]=Math.min(D[k],D[k-W1]+1);if(i>0&&j>0)D[k]=Math.min(D[k],D[k-W1-1]+1.414);if(i<gw&&j>0)D[k]=Math.min(D[k],D[k-W1+1]+1.414);}
+  for(let j=gh;j>=0;j--)for(let i=gw;i>=0;i--){const k=j*W1+i;if(i<gw)D[k]=Math.min(D[k],D[k+1]+1);if(j<gh)D[k]=Math.min(D[k],D[k+W1]+1);if(i<gw&&j<gh)D[k]=Math.min(D[k],D[k+W1+1]+1.414);if(i>0&&j<gh)D[k]=Math.min(D[k],D[k+W1-1]+1.414);}
+  let dm=1;for(const d of D)if(d<1e8)dm=Math.max(dm,d);
+  // colore dei capelli: media dei pixel pieni nella parte alta della sagoma
+  let r=0,g=0,b=0,n=0,top=gh;for(let j=0;j<=gh&&top===gh;j++)for(let i=0;i<=gw;i++)if(A(i,j)>.5){top=j;break;}
+  for(let j=top;j<top+gh*.18;j++)for(let i=0;i<=gw;i++){const k=(j*W1+i)*4;if(px[k+3]>128){r+=px[k];g+=px[k+1];b+=px[k+2];n++;}}
+  const hair=new THREE.Color().setRGB(r/n/255,g/n/255,b/n/255,THREE.SRGBColorSpace).multiplyScalar(.85);
+  const mk=(front)=>{const pos=[],uv=[],idx=[],asp=ih/iw;
+   for(let j=0;j<=gh;j++)for(let i=0;i<=gw;i++){const d=Math.min(D[j*W1+i],dm)/dm,z=Math.sqrt(d)*(front?.42:-.5);pos.push(i/gw-.5,(.5-j/gh)*asp,z);uv.push(i/gw,1-j/gh);}
+   for(let j=0;j<gh;j++)for(let i=0;i<gw;i++){const a=j*W1+i,b2=a+1,c2=a+W1,d2=c2+1;if(Math.max(A(i,j),A(i+1,j),A(i,j+1),A(i+1,j+1))<.3)continue;front?idx.push(a,c2,b2,b2,c2,d2):idx.push(a,b2,c2,b2,d2,c2);}
+   const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(idx);geo.computeVertexNormals();return geo;};
+  const mc=document.createElement('canvas');mc.width=img.width;mc.height=img.height;const mx=mc.getContext('2d');mx.drawImage(img,0,0);const md=mx.getImageData(0,0,mc.width,mc.height);
+  for(let k=0;k<md.data.length;k+=4){const a=md.data[k+3];md.data[k]=md.data[k+1]=md.data[k+2]=a;md.data[k+3]=255;}mx.putImageData(md,0,0);
+  H={front:mk(true),back:mk(false),hair,mask:new THREE.CanvasTexture(mc),asp:ih/iw,
+   chin:(()=>{let bot=0;for(let j=gh;j>=0&&!bot;j--)for(let i=0;i<=gw;i++)if(A(i,j)>.5){bot=j;break;}return{top:top/gh,bot:bot/gh};})()};HEADS.set(img,H);}
+ const fm=new THREE.MeshStandardMaterial({map:tex,alphaTest:.5,roughness:.72,metalness:0,emissive:0xffffff,emissiveMap:tex,emissiveIntensity:.22});
+ const bm=new THREE.MeshStandardMaterial({color:H.hair,alphaMap:H.mask,alphaTest:.5,roughness:.85,metalness:0});
+ const g=new THREE.Group(),f=new THREE.Mesh(H.front,fm),b=new THREE.Mesh(H.back,bm);f.castShadow=b.castShadow=true;g.add(f,b);
+ return{g,mat:fm,mats:[fm,bm],asp:H.asp,top:H.chin.top,bot:H.chin.bot};}

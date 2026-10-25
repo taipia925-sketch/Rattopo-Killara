@@ -16,7 +16,7 @@ export const CHARS=[
 // corpi 3D (modelli Mixamo con scheletro standard). her: per "FINISH HER"
 export const BODIES=[
  {id:'brute',name:'BRUTE',file:'assets/chars/brute.glb'},
- {id:'mutant',name:'MUTANTE',file:'assets/chars/mutant.glb',beast:1},
+ {id:'mutant',name:'MUTANTE',file:'assets/chars/mutant.glb',beast:1,headUp:.04},
  {id:'maw',name:'MAW',file:'assets/chars/maw.glb',beast:1},
  {id:'hulk',name:'ZUCCONE',file:'assets/chars/hulk.glb',beast:1},
  {id:'vampiro',name:'VAMPIRO',file:'assets/chars/vampiro.glb'},

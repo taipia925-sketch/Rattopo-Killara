@@ -109,6 +109,6 @@ function camUpdate(t){let k=.12;const asp=VW/VH,tanV=Math.tan(cam.fov*Math.PI/36
   at(L.keyA??.65,7,L.keyH??7,key);at(Math.PI+(L.rimA??.55),6,L.rimH??3.5,rim);at(Math.PI-(L.rimA??.55),6,L.rimH??3.5,rim2);}}
 
 export function renderFrame(t){updStage(stage,t);
- if(G){const smooth=G.mode==='guest';for(let i=0;i<2;i++){const v=fighters[i];if(!v)continue;v.update(G.f[i],smooth);const f=G.f[i];if(f.rage&&!f.raUsed&&rnd()<.35)rageAura(v);}}
+ if(G){const smooth=G.mode==='guest';for(let i=0;i<2;i++){const v=fighters[i];if(!v)continue;v.update(G.f[i],smooth,cam);const f=G.f[i];if(f.rage&&!f.raUsed&&rnd()<.35)rageAura(v);}}
  fxUpd();camUpdate(t);composer.render();}
 export function previewCam(){camS.init=false;}
