@@ -32,14 +32,14 @@ export function makeHead(tex){const img=tex.image;let H=HEADS.get(img);
   for(let j=top;j<top+gh*.18;j++)for(let i=0;i<=gw;i++){const k=(j*W1+i)*4;if(px[k+3]>128){r+=px[k];g+=px[k+1];b+=px[k+2];n++;}}
   const hair=new THREE.Color().setRGB(r/n/255,g/n/255,b/n/255,THREE.SRGBColorSpace).multiplyScalar(.85);
   const mk=(front)=>{const pos=[],uv=[],idx=[],asp=ih/iw;
-   for(let j=0;j<=gh;j++)for(let i=0;i<=gw;i++){const d=Math.min(D[j*W1+i],dm)/dm,z=Math.sqrt(d)*(front?.42:-.5);pos.push(i/gw-.5,(.5-j/gh)*asp,z);uv.push(i/gw,1-j/gh);}
+   for(let j=0;j<=gh;j++)for(let i=0;i<=gw;i++){const d=Math.min(D[j*W1+i],dm)/dm,z=Math.sqrt(d)*(front?.08:-.3);pos.push(i/gw-.5,(.5-j/gh)*asp,z);uv.push(i/gw,1-j/gh);}
    for(let j=0;j<gh;j++)for(let i=0;i<gw;i++){const a=j*W1+i,b2=a+1,c2=a+W1,d2=c2+1;if(Math.max(A(i,j),A(i+1,j),A(i,j+1),A(i+1,j+1))<.3)continue;front?idx.push(a,c2,b2,b2,c2,d2):idx.push(a,b2,c2,b2,d2,c2);}
    const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(idx);geo.computeVertexNormals();return geo;};
   const mc=document.createElement('canvas');mc.width=img.width;mc.height=img.height;const mx=mc.getContext('2d');mx.drawImage(img,0,0);const md=mx.getImageData(0,0,mc.width,mc.height);
   for(let k=0;k<md.data.length;k+=4){const a=md.data[k+3];md.data[k]=md.data[k+1]=md.data[k+2]=a;md.data[k+3]=255;}mx.putImageData(md,0,0);
   H={front:mk(true),back:mk(false),hair,mask:new THREE.CanvasTexture(mc),asp:ih/iw,
    chin:(()=>{let bot=0;for(let j=gh;j>=0&&!bot;j--)for(let i=0;i<=gw;i++)if(A(i,j)>.5){bot=j;break;}return{top:top/gh,bot:bot/gh};})()};HEADS.set(img,H);}
- const fm=new THREE.MeshStandardMaterial({map:tex,alphaTest:.5,roughness:.72,metalness:0,emissive:0xffffff,emissiveMap:tex,emissiveIntensity:.22});
+ const fm=new THREE.MeshBasicMaterial({map:tex,alphaTest:.5,toneMapped:false,fog:false}); // colori identici alla foto
  const bm=new THREE.MeshStandardMaterial({color:H.hair,alphaMap:H.mask,alphaTest:.5,roughness:.85,metalness:0});
  const g=new THREE.Group(),f=new THREE.Mesh(H.front,fm),b=new THREE.Mesh(H.back,bm);f.castShadow=b.castShadow=true;g.add(f,b);
  return{g,mat:fm,mats:[fm,bm],asp:H.asp,top:H.chin.top,bot:H.chin.bot};}
