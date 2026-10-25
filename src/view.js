@@ -29,7 +29,7 @@ export function fit(){VW=innerWidth;VH=innerHeight;const pr=TEST?1:Math.min(devi
 export const viewSize=()=>[VW,VH];
 
 export function setStage(i){if(stageIdx===i&&stage)return;stageIdx=i;
- if(stage){scene.remove(stage.grp);stage.grp.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){const m=o.material;['map','normalMap','roughnessMap','emissiveMap'].forEach(k=>m[k]&&m[k].dispose());m.dispose();}});}
+ if(stage){scene.remove(stage.grp);stage.grp.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){for(const m of[].concat(o.material)){['map','normalMap','roughnessMap','emissiveMap'].forEach(k=>m[k]&&m[k].dispose());m.dispose();}}});}
  stage=buildStage(i,MOBILE);scene.add(stage.grp);scene.fog=stage.fog;scene.background=new THREE.Color(stage.bg);
  const L=stage.light;hemi.color.set(L.hemi[0]);hemi.groundColor.set(L.hemi[1]);hemi.intensity=L.hemi[2];key.color.set(L.key[0]);key.intensity=L.key[1];rim.color.set(L.rim[0]);rim.intensity=L.rim[1];
  if(L.rim2){rim2.color.set(L.rim2[0]);rim2.intensity=L.rim2[1];}else rim2.intensity=0;renderer.toneMappingExposure=L.exp;bloom.strength=L.bloom[0];bloom.radius=L.bloom[1];bloom.threshold=L.bloom[2];

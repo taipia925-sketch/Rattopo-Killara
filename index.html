@@ -59,6 +59,7 @@ button.alt.foc,button.alt:hover{background:linear-gradient(90deg,#c9d4ff,#7f95ff
 #selBack{min-width:0}
 .bsel{display:flex;align-items:center;gap:6px;margin-top:4px;font-size:clamp(14px,3.3vh,22px);letter-spacing:1px;white-space:nowrap}
 .bsel button{min-width:0;padding:3px 10px 0;font-size:inherit}
+.stsel{justify-content:center;margin:6px 0 2px}
 /* VS */
 #pVs{background:#000;overflow:hidden;gap:0;flex-direction:row}
 #pVs .side{position:absolute;top:0;bottom:0;width:58%;display:flex;align-items:center;justify-content:center;flex-direction:column}
@@ -154,6 +155,7 @@ body.ingame #tools button{font-size:clamp(12px,2.6vh,18px);padding:2px 7px 0;opa
     <div class="grid" id="grid"></div>
     <div class="big p1"><span class="tag" id="tagR">2P</span><img id="bigR" alt=""><div class="bn" id="nameR">&nbsp;</div><div class="bsel" id="bselR"><button class="nav bsb" data-s="1" data-d="-1">◀</button><span id="bodyR">CORPO: AUTO</span><button class="nav bsb" data-s="1" data-d="1">▶</button></div></div>
   </div>
+  <div class="bsel stsel"><button class="nav ssb" data-d="-1" aria-label="Luogo precedente">◀</button><span id="stName">LUOGO: A SORTE</span><button class="nav ssb" data-d="1" aria-label="Luogo successivo">▶</button></div>
   <button class="nav alt" id="selBack">← INDIETRO</button>
 </div>
 

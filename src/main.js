@@ -106,9 +106,13 @@ $('#mus').onclick=()=>{snd.music=!snd.music;if(!snd.music)musStop();else musStar
 /* selezione personaggio (anteprima 3D: i lottatori scelti combattono sullo sfondo) */
 const grid=$('#grid');
 CHARS.forEach((c,i)=>{const d=document.createElement('div');d.className='card nav';d.dataset.ci=i;d.innerHTML='<img src="'+c.img+'" alt="'+c.name+'">';d.onclick=()=>pick(i);d.onmouseenter=()=>preview(i);grid.appendChild(d);});
-const sel={mode:null,step:0,p1:null,lvl:1,code:'',body:[-1,-1]};
+const sel={mode:null,step:0,p1:null,lvl:1,code:'',body:[-1,-1],stage:-1};
 const bodyFor=(side,ci)=>sel.body[side]>=0?sel.body[side]:CHARS[ci].body;
 function bodyUI(){[0,1].forEach(i=>{$(i?'#bodyR':'#bodyL').textContent='CORPO: '+(sel.body[i]<0?'AUTO':BODIES[sel.body[i]].name);});}
+// scelta del luogo dell'incontro (−1 = a sorte); lo sfondo del menu cambia subito
+function stageUI(){$('#stName').textContent='LUOGO: '+(sel.stage<0?'A SORTE':stageName(sel.stage));}
+$$('.ssb').forEach(b=>b.onclick=()=>{const n=stageCount+1;sel.stage=((sel.stage+1+(+b.dataset.d))%n+n)%n-1;stageUI();sfx('ui');if(sel.stage>=0)setStage(sel.stage);});
+const pickStage=()=>sel.stage<0?undefined:sel.stage;
 $$('.bsb').forEach(b=>b.onclick=()=>{const i=+b.dataset.s,n=BODIES.length+1;sel.body[i]=((sel.body[i]+1+(+b.dataset.d))%n+n)%n-1;bodyUI();sfx('ui');previewBody(i);});
 function bloodUI(){$('#bBlood small').textContent=bloodOn?'sì (stile Mortal Kombat)':'no';}
 $('#bBlood').onclick=()=>{bloodOn=!bloodOn;try{localStorage.setItem('rk_blood',bloodOn?'1':'0');}catch(e){}bloodUI();sfx('ui');};bloodUI();
@@ -123,8 +127,8 @@ function openSelect(mode){sel.mode=mode;sel.step=0;sel.p1=null;$$('.card').forEa
  selTitle();showP('pSelect');fi=focusables().findIndex(e=>e.classList.contains('card'));refocus();tryFull();}
 function selTitle(){$('#selTitle').textContent=sel.mode==='local'?(sel.step?'GIOCATORE 2: SCEGLI':'GIOCATORE 1: SCEGLI'):'SCEGLI IL LOTTATORE';}
 function pick(i){sfx('ok');
- if(sel.mode==='cpu'||sel.mode==='train'){let o;do{o=rnd()*CHARS.length|0;}while(o===i);newGame(sel.mode,[i,o],sel.lvl,undefined,[bodyFor(0,i),bodyFor(1,o)]);}
- else if(sel.mode==='local'){if(!sel.step){sel.p1=i;sel.step=1;grid.children[i].classList.add('p0');$('#bigL').src=CHARS[i].cut;$('#nameL').textContent=CHARS[i].name.toUpperCase();selTitle();refocus();}else newGame('local',[sel.p1,i],1,undefined,[bodyFor(0,sel.p1),bodyFor(1,i)]);}
+ if(sel.mode==='cpu'||sel.mode==='train'){let o;do{o=rnd()*CHARS.length|0;}while(o===i);newGame(sel.mode,[i,o],sel.lvl,pickStage(),[bodyFor(0,i),bodyFor(1,o)]);}
+ else if(sel.mode==='local'){if(!sel.step){sel.p1=i;sel.step=1;grid.children[i].classList.add('p0');$('#bigL').src=CHARS[i].cut;$('#nameL').textContent=CHARS[i].name.toUpperCase();selTitle();refocus();}else newGame('local',[sel.p1,i],1,pickStage(),[bodyFor(0,sel.p1),bodyFor(1,i)]);}
  else if(sel.mode==='host'){net.mb=bodyFor(0,i);hostRoom(i);}
  else if(sel.mode==='guest'){net.mb=bodyFor(0,i);joinRoom(sel.code,i);}}
 function tryFull(){if(!touchMode)return;try{const d=document.documentElement;(d.requestFullscreen||d.webkitRequestFullscreen||(()=>{})).call(d);screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landscape').catch(()=>{});}catch(e){}}
