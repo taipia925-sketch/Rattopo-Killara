@@ -11,7 +11,7 @@ import { currentSteps, autoSteps, explodeVectors, bom, bomCSV } from './assembly
 import { saveFile, openFile, exportSTL, exportGLB, safeName } from './io.js';
 import { buildExample } from './example.js';
 import * as V from './videos.js';
-import { $, $$, h, icon, toast, modal, confirmBox, promptBox, formBox, popMenu, numField, fmtIn, parseNum, closeModal } from './ui.js';
+import { $, $$, h, icon, toast, modal, confirmBox, promptBox, formBox, popMenu, closeMenus, numField, fmtIn, parseNum, closeModal } from './ui.js';
 
 const app = {
   tab: 'design', tool: 'select',
@@ -40,6 +40,7 @@ const TOOLS = [
 
 // ===================================================================== avvio
 function init() {
+  document.body.dataset.tab = 'design';
   viewer = new Viewer($('#view'));
   renderToolbar(); renderChips();
   bindTop(); bindView(); bindKeys(); bindStatus();
@@ -48,6 +49,17 @@ function init() {
   showHome(true);
   if (!list.length) toast('Benvenuto! Crea un progetto o apri l\'esempio.', '', 3500);
   window.smonta = { app, store, viewer, mutate, select, setTool, setTab };   // per i collaudi
+  // tasto Indietro di Android: chiude finestre e pannelli, poi torna alla scheda Progetta, poi ai progetti
+  window.smontaBack = () => {
+    if (!$('#modal').classList.contains('hidden')) { closeModal(null); return true; }
+    if ($('.menu')) { closeMenus(); return true; }
+    if (document.body.classList.contains('showLeft') || document.body.classList.contains('showRight')) { togglePanel(null); return true; }
+    if (!$('#home').classList.contains('hidden')) return false;
+    if (app.tab !== 'design') { setTab('design'); return true; }
+    if (app.tool !== 'select' || app.mate || app.measure.length) { app.mate = null; app.measure = []; setTool('select'); return true; }
+    saveWithThumb(); showHome(true); return true;
+  };
+  if (window.SmontaAndroid && window.SmontaAndroid.print) window.print = () => window.SmontaAndroid.print(document.title);
   window.addEventListener('beforeunload', () => { if (store.project) saveNow(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && store.project) saveNow(); });
 }
@@ -120,10 +132,11 @@ function togglePanel(which) {
   if (which && !was) b.classList.add('show' + which);
   $('#scrim').classList.toggle('hidden', !b.classList.contains('showLeft') && !b.classList.contains('showRight'));
 }
-const isNarrow = () => window.innerWidth <= 860;
+const isNarrow = () => window.innerWidth <= 860 || window.innerHeight <= 500;
 
 function setTab(tab) {
   app.tab = tab;
+  document.body.dataset.tab = tab;
   $$('#tabs .tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   $('#sheetView').classList.toggle('hidden', tab !== 'sheet');
   $('#bomView').classList.toggle('hidden', tab !== 'bom');
@@ -199,6 +212,7 @@ function applyXray() {
 // ===================================================================== pannello sinistro
 function renderLeft() {
   const L = $('#left'); const sc = L.scrollTop; L.innerHTML = '';
+  if (isNarrow()) L.append(h('button', { class: 'btn', style: { width: '100%', marginBottom: '12px', justifyContent: 'center' }, onclick: () => { saveWithThumb(); togglePanel(null); showHome(true); }, html: `${icon('home')}I tuoi progetti` }));
   L.append(h('h2', {}, 'Libreria'));
   for (const g of LIBRARY) {
     L.append(h('div', { class: 'secTitle' }, g.group));

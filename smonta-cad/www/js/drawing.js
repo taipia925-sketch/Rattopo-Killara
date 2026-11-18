@@ -67,7 +67,8 @@ export function drawingSVG(p, project, opts = {}) {
     return o.join('');
   };
   const holeTable = [];
-  let cursorX = area.x + 22;
+  const usedW = views.reduce((s, v) => s + v.w * k + 48, 0) + (views[0] ? views[0].t * k + 20 : 0);
+  let cursorX = area.x + 22 + Math.max(0, (area.w - 75 - usedW) / 2);
   const letters = 'ABCDEFGH';
   views.forEach((v, vi) => {
     const vw = v.w * k, vh = v.h * k;

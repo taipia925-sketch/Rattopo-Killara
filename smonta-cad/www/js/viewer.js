@@ -218,7 +218,7 @@ export class Viewer {
     if (view && dirs[view]) dir = new THREE.Vector3(...dirs[view]).normalize();
     else dir = this.camera.position.clone().sub(this.controls.target).normalize();
     const fov = THREE.MathUtils.degToRad(this.camera.fov);
-    const dist = (size / 2) / Math.tan(fov / 2) * (this.camera.aspect < 1 ? 1.5 / this.camera.aspect : 1.1);
+    const dist = (size / 2) / Math.tan(fov / 2) * (this.camera.aspect < 1 ? 1.08 / this.camera.aspect : 1.1);
     const toPos = c.clone().addScaledVector(dir, dist);
     this.animateCamera(toPos, c, animate ? 450 : 0);
     // ombre proporzionate al modello

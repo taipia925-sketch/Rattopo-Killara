@@ -49,7 +49,7 @@ export function autoSteps(project) {
         st.text += s.threaded
           ? ` Avvita ${n} vit${n > 1 ? 'i' : 'e'} ${s.size}×${s.L} con rondella nei fori filettati e serra a ${fmt(b.torque)} Nm.`
           : ` Inserisci ${n} vit${n > 1 ? 'i' : 'e'} ${s.size}×${s.L} con una rondella sotto la testa e una sotto il dado; serra a ${fmt(b.torque)} Nm.`;
-        st.tools.push(`Chiave ${b.s} mm`, s.threaded ? null : `Chiave ${b.s} mm (contro-dado)`, 'Chiave dinamometrica');
+        st.tools.push(s.threaded ? `Chiave da ${b.s} mm` : `2 chiavi da ${b.s} mm`, 'Chiave dinamometrica');
       }
     }
     st.tools = [...new Set(st.tools.filter(Boolean))];

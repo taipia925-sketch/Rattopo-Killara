@@ -209,9 +209,12 @@ h2 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
 .toast svg { width: 16px; height: 16px; }
 @keyframes tin { from { opacity: 0; transform: translateY(6px); } }
 
+body[data-tab=sheet] #left, body[data-tab=bom] #left, body[data-tab=assy] #left, body[data-tab=sheet] #right, body[data-tab=bom] #right { display: none; }
+body[data-tab=sheet] #btnLeft, body[data-tab=bom] #btnLeft, body[data-tab=assy] #btnLeft, body[data-tab=sheet] #btnRight, body[data-tab=bom] #btnRight { visibility: hidden; }
+
 /* ---------------- telefono e tablet stretti */
 @media (max-width: 1100px) { :root { --left: 236px; --right: 280px; } .tab span { display: none; } }
-@media (max-width: 860px) {
+@media (max-width: 860px), (max-height: 500px) {
   :root { --top: 52px; }
   .mobileOnly { display: inline-flex !important; }
   .desktopOnly { display: none !important; }
@@ -222,14 +225,33 @@ h2 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
   #left { left: 0; width: min(300px, 86vw); transform: translateX(-105%); }
   #right { right: 0; width: min(340px, 92vw); transform: translateX(105%); }
   body.showLeft #left, body.showRight #right { transform: none; }
-  #scrim { position: fixed; inset: var(--top) 0 0 0; background: rgba(15,22,32,.3); z-index: 35; }
+  #scrim { position: absolute; inset: 0; background: rgba(15,22,32,.3); z-index: 35; }
   .tool { width: 60px; height: 54px; font-size: 10.5px; }
   #tip { bottom: calc(84px + var(--safe-b)); font-size: 12px; }
   .chips { max-width: calc(100% - 90px); }
   .chip span { display: none; }
   #status .desktopOnly { display: none; }
+  #status { gap: 12px; padding-left: 10px; padding-right: 10px; }
+  #top { gap: 4px; padding: 0 6px; }
+  .topActions { gap: 0; }
+  #top .btn.icon { padding: 7px; }
+  .tab { padding: 6px 9px; }
   .stepVideo { width: 160px; }
   #assy { flex-direction: column; align-items: stretch; }
+}
+@media (max-height: 500px) {
+  :root { --top: 48px; --status: 26px; }
+  .tool { width: 54px; height: 46px; gap: 2px; }
+  .tool svg { width: 19px; height: 19px; }
+  #toolbar { padding: 4px; bottom: calc(8px + var(--safe-b)); }
+  #tip { display: none; }
+  .cube { padding: 5px 7px; } .cube svg { width: 26px; height: 26px; }
+  .stepCard { padding: 8px 10px; } .stepCard h3 { font-size: 14px; } .stepCard p { font-size: 12px; margin-bottom: 4px; }
+  #assy { flex-direction: row; align-items: flex-end; }
+}
+@media (max-width: 520px) {
+  #btnHome, .unitLbl { display: none !important; }
+  .tab { padding: 6px 7px; }
 }
 @media print {
   body * { visibility: hidden; }
