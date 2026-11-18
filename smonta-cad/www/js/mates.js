@@ -52,6 +52,9 @@ export function mateHoles(fixedPart, fixedSel, movePart, moveSel, others = null)
   const A = fixedSel.axis, B = moveSel.axis;
   const pA = fixedSel.side === 'b' ? A.b.clone() : A.a.clone();
   const nA = fixedSel.side === 'b' ? A.dir.clone() : A.dir.clone().negate();
+  // del pezzo mobile si usa la faccia che richiede meno rotazione (non lo si capovolge senza motivo)
+  const dB = B.dir.dot(nA);
+  if (Math.abs(dB) > 0.05) moveSel = { ...moveSel, side: dB < 0 ? 'b' : 'a' };
   const pB = moveSel.side === 'b' ? B.b.clone() : B.a.clone();
   const nB = moveSel.side === 'b' ? B.dir.clone() : B.dir.clone().negate();
   const R1 = new THREE.Quaternion().setFromUnitVectors(nB, nA.clone().negate());

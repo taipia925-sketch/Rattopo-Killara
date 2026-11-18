@@ -176,6 +176,18 @@ export class Viewer {
     const point = h.point.clone(); if (off) point.sub(off);
     return { part: ent.part, point, normal, distance: h.distance };
   }
+  /** Coordinate sullo schermo (pixel della pagina) di un punto 3D, considerando l'esploso */
+  toScreen(v) {
+    const p = v.clone().project(this.camera);
+    const r = this.renderer.domElement.getBoundingClientRect();
+    return { x: r.left + (p.x + 1) / 2 * r.width, y: r.top + (1 - p.y) / 2 * r.height, z: p.z };
+  }
+  /** Lunghezza in pixel di un segmento di 'len' mm attorno al punto v (per il raggio dei fori) */
+  pxPerMm(v) {
+    const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).normalize();
+    const a = this.toScreen(v), b = this.toScreen(v.clone().add(right));
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
   /** Punto sul piano del pavimento (z = 0) */
   pickGround(ev, z = 0) {
     this.raycaster.setFromCamera(this.ndc(ev), this.camera);

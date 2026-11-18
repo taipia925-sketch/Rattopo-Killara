@@ -668,8 +668,9 @@ function bindView() {
     if (!['hole', 'mate', 'bolt', 'measure'].includes(app.tool) || app.tab !== 'design') return;
     cancelAnimationFrame(hoverRaf);
     hoverRaf = requestAnimationFrame(() => {
-      const hit = viewer.pick(e, isSheet);
-      const sel = hit ? pickHole(hit.part, hit.point, hit.normal) : null;
+      const hp = app.tool === 'hole' ? null : pickHoleScreen(e);
+      const hit = hp ? null : viewer.pick(e, isSheet);
+      const sel = hp ? hp.sel : null;
       const key = sel ? sel.axis.hole.id + sel.side : (hit && app.tool === 'hole' ? 'f' + Math.round(hit.point.x) + Math.round(hit.point.y) + Math.round(hit.point.z) : null);
       if (key === (app.hover && app.hover.key)) return;
       app.hover = sel ? { key, sel } : (hit && app.tool === 'hole' ? { key, hit } : null);
@@ -733,6 +734,38 @@ function onTap(e) {
   if (t === 'measure') return tapMeasure(e);
 }
 
+/** Trova il foro più vicino al dito sullo schermo (anche toccando il centro vuoto del foro).
+ * Considera il lato del foro rivolto verso la telecamera e scarta i fori nascosti da altri pezzi. */
+function pickHoleScreen(e, filter = () => true) {
+  const cam = viewer.camera.position;
+  const hit = viewer.pick(e);
+  let best = null;
+  for (const p of store.project.parts) {
+    if (!isSheet(p) || p.hidden || !filter(p) || viewer.hidden.has(p.id)) continue;
+    const off = viewer.offsets.get(p.id);
+    for (const ax of holeAxes(p)) {
+      for (const side of ['a', 'b']) {
+        const pt = (side === 'b' ? ax.b : ax.a).clone(); if (off) pt.add(off);
+        const n = side === 'b' ? ax.dir : ax.dir.clone().negate();
+        const toCam = cam.clone().sub(pt);
+        const facing = n.dot(toCam.clone().normalize());
+        if (facing < -0.05) continue;
+        const s = viewer.toScreen(pt);
+        if (s.z > 1) continue;
+        const dpx = Math.hypot(s.x - e.clientX, s.y - e.clientY);
+        const rpx = ax.d / 2 * viewer.pxPerMm(pt);
+        const lim = Math.max(22, rpx + 10);
+        if (dpx > lim) continue;
+        // nascosto da un pezzo più vicino alla telecamera?
+        if (hit && hit.part.id !== p.id && hit.distance < toCam.length() - 3) continue;
+        const score = dpx / lim - facing * 0.3;
+        if (!best || score < best.score) best = { score, part: p, sel: { axis: ax, side } };
+      }
+    }
+  }
+  return best;
+}
+
 function localFacePoint(p, point, normal) {
   const inv = new THREE.Matrix4().compose(new THREE.Vector3(...p.pos), new THREE.Quaternion(...p.quat), new THREE.Vector3(1, 1, 1)).invert();
   const lp = point.clone().applyMatrix4(inv);
@@ -766,13 +799,14 @@ function tapHole(e) {
 }
 
 function tapMate(e) {
-  const hit = viewer.pick(e, (p) => !p.stack);
-  if (!hit) { if (app.mate) { app.mate = null; drawOverlay(); renderRight(); setTip(); } return; }
-  const hs = isSheet(hit.part) ? pickHole(hit.part, hit.point, hit.normal) : null;
-  const cur = hs ? { kind: 'hole', partId: hit.part.id, holeId: hs.axis.hole.id, side: hs.side } : { kind: 'face', partId: hit.part.id, point: hit.point.clone(), normal: hit.normal.clone() };
-  if (!app.mate) { app.mate = cur; select(hit.part.id); drawOverlay(); renderRight(); setTip(); return; }
-  if (app.mate.partId === hit.part.id) { app.mate = cur; drawOverlay(); setTip(); toast('Scegli un foro su un altro pezzo.', 'warn'); return; }
-  const A = app.mate, fixed = part(A.partId), moving = hit.part;
+  const hp = pickHoleScreen(e, app.mate ? (p) => p.id !== app.mate.partId : undefined) || pickHoleScreen(e);
+  const hit = hp ? null : viewer.pick(e, (p) => !p.stack);
+  if (!hp && !hit) { if (app.mate) { app.mate = null; drawOverlay(); renderRight(); setTip(); } return; }
+  const tapped = hp ? hp.part : hit.part;
+  const cur = hp ? { kind: 'hole', partId: tapped.id, holeId: hp.sel.axis.hole.id, side: hp.sel.side } : { kind: 'face', partId: tapped.id, point: hit.point.clone(), normal: hit.normal.clone() };
+  if (!app.mate) { app.mate = cur; select(tapped.id); drawOverlay(); renderRight(); setTip(); return; }
+  if (app.mate.partId === tapped.id) { app.mate = cur; drawOverlay(); setTip(); toast('Scegli un foro su un altro pezzo.', 'warn'); return; }
+  const A = app.mate, fixed = part(A.partId), moving = tapped;
   // la bulloneria che lega il pezzo mobile si ricalcola dopo lo spostamento
   let n = 0;
   mutate('accoppia', (pr) => {
@@ -798,10 +832,9 @@ function holeFacePoint(p, sel) {
 }
 
 function tapBolt(e) {
-  const hit = viewer.pick(e, (p) => isSheet(p));
-  if (!hit) { toast('Tocca un foro di una lastra.', 'warn'); return; }
-  const hs = pickHole(hit.part, hit.point, hit.normal);
-  if (!hs) { toast('Tocca proprio su un foro (anche il bordo del foro va bene).', 'warn'); return; }
+  const hp = pickHoleScreen(e);
+  if (!hp) { toast('Tocca un foro di una lastra (anche al centro va bene).', 'warn'); return; }
+  const hit = { part: hp.part }, hs = hp.sel;
   const pr = store.project;
   const exist = pr.stacks.find((s) => s.plates.includes(hit.part.id) && (s.ref.hole === hs.axis.hole.id || stackHasHole(pr, s, hs)));
   if (exist) { select(exist.members.find((id) => ['bolt', 'pin'].includes(part(id).type))); toast('Questo foro è già fissato.', 'warn'); return; }
@@ -849,10 +882,10 @@ function boltAll() {
 }
 
 function tapMeasure(e) {
-  const hit = viewer.pick(e);
-  let pt = hit ? hit.point.clone() : viewer.pickGround(e);
+  const hp = pickHoleScreen(e);
+  const hit = hp ? null : viewer.pick(e);
+  let pt = hp ? (hp.sel.side === 'b' ? hp.sel.axis.b : hp.sel.axis.a).clone() : hit ? hit.point.clone() : viewer.pickGround(e);
   if (!pt) return;
-  if (hit && isSheet(hit.part)) { const hs = pickHole(hit.part, hit.point, hit.normal); if (hs) pt = (hs.side === 'b' ? hs.axis.b : hs.axis.a).clone(); }
   if (app.measure.length >= 2) app.measure = [];
   app.measure.push(pt);
   drawOverlay(); renderRight(); setTip();
