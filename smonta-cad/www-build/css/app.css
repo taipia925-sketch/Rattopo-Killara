@@ -50,6 +50,8 @@ svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor;
 .panel { background: var(--surface); overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
 #left { width: var(--left); flex: none; border-right: 1px solid var(--border); padding: 14px 12px 20px; }
 #right { width: var(--right); flex: none; border-left: 1px solid var(--border); padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 14px; }
+#right > * { flex-shrink: 0; }
+textarea.select { min-height: 110px; resize: vertical; line-height: 1.4; }
 #center { position: relative; flex: 1; min-width: 0; background: var(--viewport); overflow: hidden; }
 #view { position: absolute; inset: 0; touch-action: none; }
 #view canvas.gl { display: block; outline: none; }

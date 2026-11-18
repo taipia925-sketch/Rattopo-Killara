@@ -1296,6 +1296,7 @@ async function attachVideo() {
     // durata reale
     const url = await V.getVideoURL(store.project.id);
     const v = document.createElement('video'); v.preload = 'metadata'; v.src = url;
+    v.onerror = () => toast('Video salvato, ma questo dispositivo non riesce a leggerne la durata: imposta inizio e fine dei passi a mano.', 'warn', 5000);
     v.onloadedmetadata = () => {
       const d = v.duration || 0, n = store.project.steps.length || 1;
       mutate('tempi video', (p) => { p.steps.forEach((s, k) => { s.video = { start: Math.round(d * k / n * 10) / 10, end: Math.round(d * (k + 1) / n * 10) / 10 }; }); });
