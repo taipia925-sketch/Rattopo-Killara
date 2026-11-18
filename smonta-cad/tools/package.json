@@ -1,0 +1,7 @@
+{
+  "name": "smonta-studio-build",
+  "private": true,
+  "description": "Crea la versione impacchettata dell'app (un solo file JavaScript) per Android e per il web",
+  "scripts": { "build": "node build.mjs" },
+  "devDependencies": { "esbuild": "0.24.0", "three": "0.170.0" }
+}

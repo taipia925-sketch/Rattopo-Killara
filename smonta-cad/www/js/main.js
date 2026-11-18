@@ -946,7 +946,16 @@ async function allDXF() {
 function printSVG(svg) {
   const pa = $('#printArea'); pa.innerHTML = svg; pa.classList.remove('hidden');
   const svgEl = pa.querySelector('svg'); svgEl.setAttribute('width', '100%'); svgEl.setAttribute('height', '100%');
-  setTimeout(() => { window.print(); setTimeout(() => { pa.classList.add('hidden'); pa.innerHTML = ''; }, 500); }, 100);
+  doPrint(pa);
+}
+function doPrint(pa) {
+  const hide = () => { pa.classList.add('hidden'); pa.innerHTML = ''; };
+  setTimeout(() => {
+    window.print();
+    // su Android l'anteprima di stampa si prepara dopo: il foglio resta pronto fino al prossimo tocco
+    if (window.SmontaAndroid) setTimeout(() => document.addEventListener('pointerdown', hide, { once: true }), 1500);
+    else setTimeout(hide, 500);
+  }, 100);
 }
 function saveSheetPNG(svg, p) {
   return new Promise((resolve) => {
@@ -990,7 +999,7 @@ function printBom(b) {
   const rows = b.rows.map((r) => `<tr><td>${r.pos}</td><td>${r.qty}</td><td>${escapeHtml(r.desc)}</td><td>${escapeHtml(r.material)}</td><td style="text-align:right">${fmt(r.unit, 3)}</td><td style="text-align:right">${fmt(r.total, 3)}</td></tr>`).join('');
   const html = `<div style="font-family:Inter,Arial;padding:14mm;color:#111"><h2 style="margin:0 0 4mm">Distinta materiali – ${escapeHtml(pr.name)}</h2><table style="width:100%;border-collapse:collapse;font-size:11pt" border="1" cellpadding="5"><tr style="background:#eee"><th>Pos.</th><th>Q.tà</th><th>Descrizione</th><th>Materiale</th><th>kg cad.</th><th>kg tot.</th></tr>${rows}<tr><td></td><td>${b.count}</td><td><b>Totale</b></td><td></td><td></td><td style="text-align:right"><b>${fmt(b.totalMass, 3)}</b></td></tr></table><p style="font-size:9pt;color:#555">Smonta Studio · ${new Date().toLocaleDateString('it-IT')}</p></div>`;
   const pa = $('#printArea'); pa.innerHTML = html; pa.classList.remove('hidden');
-  setTimeout(() => { window.print(); setTimeout(() => { pa.classList.add('hidden'); pa.innerHTML = ''; }, 500); }, 100);
+  doPrint(pa);
 }
 
 // ===================================================================== montaggio
