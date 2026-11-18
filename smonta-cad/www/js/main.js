@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { Viewer } from './viewer.js';
 import { store, on, emit, mutate, checkpoint, commit, undo, redo, part, selectedParts, select, saveNow, listProjects, loadProject, deleteProject, setProject, createProject } from './store.js';
-import { LIBRARY, PART_TYPES, newPart, describe, kindLabel, mass, area2D, addHole, holeInside, patternGrid, patternCircle, patternCorners, faces, clone, uid, holeAxes } from './model.js';
+import { LIBRARY, PART_TYPES, newPart, describe, kindLabel, mass, area2D, addHole, holeInside, patternGrid, patternCircle, patternCorners, faces, clone, uid, holeAxes, holeEnds } from './model.js';
 import { BOLTS, BOLT_SIZES, BOLT_LENGTHS, PIN_DIAMETERS, PIN_LENGTHS, MATERIALS, boltForHole, holeFit, fmt } from './iso.js';
 import { pickHole, mateHoles, mateFaces, makeFastener, rebuildAllStacks, runChecks, isSheet, holeStack } from './mates.js';
 import { holeMarker, worldBox } from './geom.js';
@@ -15,7 +15,7 @@ import { $, $$, h, icon, toast, modal, confirmBox, promptBox, formBox, popMenu, 
 
 const app = {
   tab: 'design', tool: 'select',
-  hole: { mode: 'bolt', size: 'M8', fit: 'medium', d: 9, thread: 'M8' },
+  hole: { mode: 'bolt', size: 'M8', fit: 'medium', d: 9, thread: 'M8', len: 20, ang: 0 },
   fast: { kind: 'bolt', size: 'auto' },
   mate: null,          // primo elemento scelto per Accoppia
   measure: [],          // punti della misura
@@ -307,10 +307,15 @@ function toolOptions() {
     const wrap = h('div', { class: 'card blue' });
     wrap.append(h('b', {}, 'Nuovi fori'));
     const seg = h('div', { class: 'seg', style: { margin: '8px 0' } });
-    for (const [m, l] of [['bolt', 'Per vite'], ['thread', 'Filettato'], ['free', 'Diametro']]) seg.append(h('button', { class: hp.mode === m ? 'on' : '', onclick: () => { hp.mode = m; renderRight(); } }, l));
+    for (const [m, l] of [['bolt', 'Per vite'], ['slot', 'Asola'], ['thread', 'Filettato'], ['free', 'Diametro']]) seg.append(h('button', { class: hp.mode === m ? 'on' : '', onclick: () => { hp.mode = m; renderRight(); } }, l));
     wrap.append(seg);
     const f = h('div', { class: 'fields' });
-    if (hp.mode === 'bolt') {
+    if (hp.mode === 'slot') {
+      f.append(selField('Vite', hp.size, BOLT_SIZES.map((s) => [s, s]), (v) => { hp.size = v; renderRight(); }));
+      f.append(numField('Corsa', hp.len, 'mm', (v) => { hp.len = v; renderRight(); }, { min: 1, max: 1000 }));
+      f.append(selField('Direzione', hp.ang, [[0, 'Orizzontale'], [90, 'Verticale'], [45, 'Diagonale 45°']], (v) => { hp.ang = +v; renderRight(); }));
+      hp.d = BOLTS[hp.size].clear[1];
+    } else if (hp.mode === 'bolt') {
       f.append(selField('Vite', hp.size, BOLT_SIZES.map((s) => [s, s]), (v) => { hp.size = v; renderRight(); }));
       f.append(selField('Gioco (ISO 273)', hp.fit, [['fine', 'Fine'], ['medium', 'Medio'], ['coarse', 'Largo']], (v) => { hp.fit = v; renderRight(); }));
       hp.d = BOLTS[hp.size].clear[{ fine: 0, medium: 1, coarse: 2 }[hp.fit]];
@@ -321,7 +326,7 @@ function toolOptions() {
       f.append(numField('Diametro', hp.d, 'mm', (v) => { hp.d = v; renderRight(); }, { min: 0.5, max: 500 }));
     }
     wrap.append(f);
-    wrap.append(h('div', { style: { marginTop: '8px', fontSize: '12px' } }, hp.mode === 'thread' ? `Foro filettato ${hp.thread}: preforo Ø ${fmt(BOLTS[hp.thread].tap)}` : `Foro Ø ${fmt(hp.d)} mm${boltForHole(hp.d) ? ` – adatto a ${boltForHole(hp.d)}` : ''}`));
+    wrap.append(h('div', { style: { marginTop: '8px', fontSize: '12px' } }, hp.mode === 'thread' ? `Foro filettato ${hp.thread}: preforo Ø ${fmt(BOLTS[hp.thread].tap)}` : hp.mode === 'slot' ? `Asola ${fmt(hp.d)} × ${fmt(hp.d + hp.len)} mm per ${hp.size}: permette di regolare la posizione di ±${fmt(hp.len / 2)} mm` : `Foro Ø ${fmt(hp.d)} mm${boltForHole(hp.d) ? ` – adatto a ${boltForHole(hp.d)}` : ''}`));
     wrap.append(h('div', { class: 'muted', style: { fontSize: '11px', marginTop: '4px' } }, `Il punto si aggancia ogni ${store.project.settings.snap || 'libero'} mm (cambia in basso). Per schemi regolari usa i pulsanti nella scheda del pezzo.`));
     return wrap;
   }
@@ -436,7 +441,7 @@ function holesSection(p) {
   const fs = faces(p);
   p.holes.forEach((ho, i) => {
     const bad = !holeInside(p, ho);
-    const fit = ho.kind === 'thread' ? `filettato ${ho.thread}` : (boltForHole(ho.d) ? `passante · per vite ${boltForHole(ho.d)}` : 'passante');
+    const fit = ho.kind === 'thread' ? `filettato ${ho.thread}` : ho.len ? `asola ${fmt(ho.d)}×${fmt(ho.d + ho.len)}${boltForHole(ho.d) ? ` · per ${boltForHole(ho.d)}` : ''}` : (boltForHole(ho.d) ? `passante · per vite ${boltForHole(ho.d)}` : 'passante');
     const row = h('div', { class: 'holeRow' + (ho.kind === 'thread' ? ' thread' : '') + (bad ? ' bad' : '') },
       h('span', { class: 'dot' }),
       h('div', { class: 't' }, h('b', {}, ho.kind === 'thread' ? `${ho.thread}  ${fit}` : `Ø ${fmt(ho.d)}  ${fit}`), h('small', {}, `${fs.length > 1 ? `ala ${ho.face || 'A'} · ` : ''}x ${fmt(ho.x)} · y ${fmt(ho.y)}${bad ? ' · fuori dal pezzo!' : ''}`)),
@@ -455,16 +460,19 @@ function holesSection(p) {
   return wrap;
 }
 
-function holeDiamFields(defD) {
-  return [
+function holeDiamFields(defD, slot = false) {
+  const f = [
     { key: 'kind', label: 'Tipo', type: 'select', value: 'pass', options: [['pass', 'Passante'], ['thread', 'Filettato']] },
     { key: 'd', label: 'Diametro (se passante)', value: fmtIn(defD), unit: 'mm' },
     { key: 'thread', label: 'Filetto (se filettato)', type: 'select', value: 'M8', options: BOLT_SIZES.map((s) => [s, s]) },
   ];
+  if (slot) f.push({ key: 'len', label: 'Corsa asola (0 = foro tondo)', value: 0, unit: 'mm' }, { key: 'ang', label: 'Direzione asola', value: 0, unit: '°' });
+  return f;
 }
 function holeFromForm(r) {
-  if (r.kind === 'thread') return { d: BOLTS[r.thread].d, kind: 'thread', thread: r.thread };
-  return { d: r.d, kind: 'pass', thread: null };
+  const slot = r.len > 0 && r.kind !== 'thread' ? { len: r.len, ang: r.ang || 0 } : { len: 0, ang: 0 };
+  if (r.kind === 'thread') return { d: BOLTS[r.thread].d, kind: 'thread', thread: r.thread, ...slot };
+  return { d: r.d, kind: 'pass', thread: null, ...slot };
 }
 
 async function editHole(p, ho) {
@@ -473,9 +481,9 @@ async function editHole(p, ho) {
   const fields = [
     { key: 'x', label: p.type === 'disc' ? 'X dal centro' : 'X dallo spigolo', value: fmtIn(def.x), unit: 'mm' },
     { key: 'y', label: p.type === 'disc' ? 'Y dal centro' : 'Y dallo spigolo', value: fmtIn(def.y), unit: 'mm' },
-    ...holeDiamFields(def.d),
+    ...holeDiamFields(def.d, true),
   ];
-  fields[2].value = def.kind; fields[4].value = def.thread || 'M8';
+  fields[2].value = def.kind; fields[4].value = def.thread || 'M8'; fields[5].value = fmtIn(def.len || 0); fields[6].value = fmtIn(def.ang || 0);
   if (fs.length > 1) fields.push({ key: 'face', label: 'Ala', type: 'select', value: def.face || 'A', options: [['A', 'Ala A'], ['B', 'Ala B']] });
   const r = await formBox(ho ? 'Modifica foro' : 'Nuovo foro', fields, ho ? 'Applica' : 'Aggiungi', p.type === 'disc' ? 'Le coordinate partono dal centro del disco.' : 'Le coordinate partono dallo spigolo in basso a sinistra.');
   if (!r) return;
@@ -483,8 +491,8 @@ async function editHole(p, ho) {
   const test = { ...hd, x: r.x, y: r.y, face: r.face || 'A' };
   if (!holeInside(p, test)) { toast('Il foro uscirebbe dal pezzo o toccherebbe il bordo.', 'err'); return; }
   mutate(ho ? 'modifica foro' : 'nuovo foro', (pr) => {
-    if (ho) Object.assign(p.holes.find((x) => x.id === ho.id), { x: r.x, y: r.y, ...hd, face: r.face || ho.face || 'A' });
-    else addHole(p, r.x, r.y, hd.d, r.face || 'A', hd.kind, hd.thread);
+    if (ho) { const t = p.holes.find((x) => x.id === ho.id); Object.assign(t, { x: r.x, y: r.y, ...hd, face: r.face || ho.face || 'A' }); if (!t.len) { delete t.len; delete t.ang; } }
+    else addHole(p, r.x, r.y, hd.d, r.face || 'A', hd.kind, hd.thread, hd.len, hd.ang);
     rebuildAllStacks(pr);
   });
 }
@@ -790,12 +798,13 @@ function tapHole(e) {
   const x = sn(loc.x), y = sn(loc.y);
   const hp = app.hole;
   const d = hp.mode === 'thread' ? BOLTS[hp.thread].d : hp.d;
-  const test = { x, y, d, face: loc.face };
+  const slot = hp.mode === 'slot' ? { len: hp.len, ang: hp.ang } : {};
+  const test = { x, y, d, face: loc.face, ...slot };
   if (!holeInside(p, test)) { toast('Lì il foro uscirebbe dal pezzo: troppo vicino al bordo.', 'err'); return; }
-  if (p.holes.some((o) => (o.face || 'A') === loc.face && Math.hypot(o.x - x, o.y - y) < (o.d + d) / 2 + 1)) { toast('C\'è già un foro in quel punto.', 'warn'); return; }
-  mutate('foro', (pr) => { addHole(p, x, y, d, loc.face, hp.mode === 'thread' ? 'thread' : 'pass', hp.mode === 'thread' ? hp.thread : null); rebuildAllStacks(pr); });
+  if (p.holes.some((o) => (o.face || 'A') === loc.face && Math.hypot(o.x - x, o.y - y) < (o.d + d) / 2 + 1 + ((o.len || 0) + (slot.len || 0)) / 2)) { toast('C\'è già un foro in quel punto.', 'warn'); return; }
+  mutate('foro', (pr) => { addHole(p, x, y, d, loc.face, hp.mode === 'thread' ? 'thread' : 'pass', hp.mode === 'thread' ? hp.thread : null, slot.len || 0, slot.ang || 0); rebuildAllStacks(pr); });
   if (!store.selection.includes(p.id)) select(p.id);
-  toast(`Foro ${hp.mode === 'thread' ? hp.thread : 'Ø ' + fmt(d)} in x ${fmt(x)} · y ${fmt(y)}`, 'ok', 1600);
+  toast(`${hp.mode === 'slot' ? 'Asola' : 'Foro'} ${hp.mode === 'thread' ? hp.thread : 'Ø ' + fmt(d)} in x ${fmt(x)} · y ${fmt(y)}`, 'ok', 1600);
 }
 
 function tapMate(e) {

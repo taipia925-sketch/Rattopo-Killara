@@ -1,6 +1,6 @@
 // Tavola tecnica 2D quotata (SVG, foglio A4) ed esportazione DXF per taglio laser/plasma.
 import { MATERIALS, BOLTS, boltForHole, fmt } from './iso.js';
-import { kindLabel, describe, mass, area2D, faces } from './model.js';
+import { kindLabel, describe, mass, area2D, faces, holeEnds } from './model.js';
 
 const SCALES = [[5, 1], [2, 1], [1, 1], [1, 2], [1, 2.5], [1, 5], [1, 10], [1, 20], [1, 50]];
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
@@ -21,11 +21,12 @@ function flatViews(p) {
 export function holeGroups(holes) {
   const g = new Map();
   for (const h of holes) {
-    const k = `${h.d}|${h.kind}|${h.thread || ''}`;
-    if (!g.has(k)) g.set(k, { d: h.d, kind: h.kind, thread: h.thread, n: 0 });
+    const k = `${h.d}|${h.kind}|${h.thread || ''}|${h.len || 0}`;
+    if (!g.has(k)) g.set(k, { d: h.d, kind: h.kind, thread: h.thread, len: h.len || 0, n: 0 });
     g.get(k).n++;
   }
   return [...g.values()].map((x) => {
+    if (x.len) return `${x.n}× asol${x.n === 1 ? 'a' : 'e'} ${fmt(x.d)} × ${fmt(x.d + x.len)} (corsa ${fmt(x.len)} mm)`;
     if (x.kind === 'thread') return `${x.n}× ${x.thread} filettati (preforo Ø ${fmt(BOLTS[x.thread] ? BOLTS[x.thread].tap : x.d)})`;
     const b = boltForHole(x.d);
     return `${x.n}× Ø ${fmt(x.d)} passanti${b ? ` (per ${b})` : ''}`;
@@ -110,13 +111,18 @@ export function drawingSVG(p, project, opts = {}) {
     // fori con assi
     v.holes.forEach((h, i) => {
       const cx = X(h.x), cy = Y(h.y), rr = h.d / 2 * k;
-      out.push(`<circle cx="${cx}" cy="${cy}" r="${rr}" ${S.thick}/>`);
+      if (h.len) {
+        const [[x1, y1], [x2, y2]] = holeEnds(h).map(([x, y]) => [X(x), Y(y)]);
+        const a = Math.atan2(y2 - y1, x2 - x1), nx = -Math.sin(a) * rr, ny = Math.cos(a) * rr;
+        out.push(`<path d="M${x1 + nx} ${y1 + ny} L${x2 + nx} ${y2 + ny} A${rr} ${rr} 0 0 0 ${x2 - nx} ${y2 - ny} L${x1 - nx} ${y1 - ny} A${rr} ${rr} 0 0 0 ${x1 + nx} ${y1 + ny} Z" ${S.thick}/>`);
+        out.push(`<path d="M${x1} ${y1} L${x2} ${y2}" ${S.center}/>`);
+      } else out.push(`<circle cx="${cx}" cy="${cy}" r="${rr}" ${S.thick}/>`);
       if (h.kind === 'thread') out.push(`<path d="M${cx + rr * 1.18} ${cy} A${rr * 1.18} ${rr * 1.18} 0 1 1 ${cx} ${cy - rr * 1.18}" ${S.thin}/>`);
       const c = rr + 1.6;
       out.push(`<path d="M${cx - c} ${cy} L${cx + c} ${cy} M${cx} ${cy - c} L${cx} ${cy + c}" ${S.center}/>`);
       const id = `${letters[vi]}${i + 1}`;
       out.push(T(cx + rr + 0.8, cy - rr - 0.6, id, 2, 'start'));
-      holeTable.push({ id, x: h.x, y: h.y, d: h.d, kind: h.kind, thread: h.thread });
+      holeTable.push({ id, x: h.x, y: h.y, d: h.d, kind: h.kind, thread: h.thread, len: h.len || 0 });
     });
     // didascalia gruppi fori
     holeGroups(v.holes).forEach((g, i) => out.push(T(x0 + vw / 2, Y(v.centered ? -v.h / 2 : 0) + 17 + i * 3.6, g, 2.5)));
@@ -138,7 +144,7 @@ export function drawingSVG(p, project, opts = {}) {
     out.push(T(tx + 2, ty + 2.8, 'Foro', 2.2, 'start', 0, 600) + T(tx + 20, ty + 2.8, 'X', 2.2, 'end', 0, 600) + T(tx + 34, ty + 2.8, 'Y', 2.2, 'end', 0, 600) + T(tx + 36, ty + 2.8, 'Diametro', 2.2, 'start', 0, 600));
     rows.forEach((h, i) => {
       const y = ty + 2.8 + (i + 1) * rowH;
-      out.push(T(tx + 2, y, h.id, 2.2, 'start') + T(tx + 20, y, fmt(h.x), 2.2, 'end') + T(tx + 34, y, fmt(h.y), 2.2, 'end') + T(tx + 36, y, h.kind === 'thread' ? h.thread : `Ø ${fmt(h.d)}`, 2.2, 'start'));
+      out.push(T(tx + 2, y, h.id, 2.2, 'start') + T(tx + 20, y, fmt(h.x), 2.2, 'end') + T(tx + 34, y, fmt(h.y), 2.2, 'end') + T(tx + 36, y, h.kind === 'thread' ? h.thread : h.len ? `asola ${fmt(h.d)}×${fmt(h.d + h.len)}` : `Ø ${fmt(h.d)}`, 2.2, 'start'));
     });
     if (holeTable.length > rows.length) out.push(T(tx + 2, ty + (rows.length + 2) * rowH + 1, `… altri ${holeTable.length - rows.length} fori nel file DXF`, 2, 'start'));
   }
@@ -175,19 +181,27 @@ export function partDXF(p) {
   const circle = (x, y, r, layer) => add(0, 'CIRCLE', 8, layer, 10, x, 20, y, 30, 0, 40, r);
   const arc = (x, y, r, a1, a2, layer = 'TAGLIO') => add(0, 'ARC', 8, layer, 10, x, 20, y, 30, 0, 40, r, 50, a1, 51, a2);
   const text = (x, y, h, s) => add(0, 'TEXT', 8, 'TESTO', 10, x, 20, y, 30, 0, 40, h, 1, s);
+  const holeOut = (ox, oy, hh) => {
+    const r = (hh.kind === 'thread' ? (BOLTS[hh.thread] || { tap: hh.d }).tap : hh.d) / 2;
+    if (!hh.len) { circle(ox + hh.x, oy + hh.y, r, 'FORI'); return; }
+    const [[x1, y1], [x2, y2]] = holeEnds(hh); const a = (hh.ang || 0), ar = a * Math.PI / 180;
+    const nx = -Math.sin(ar) * r, ny = Math.cos(ar) * r;
+    line(ox + x1 + nx, oy + y1 + ny, ox + x2 + nx, oy + y2 + ny, 'FORI'); line(ox + x1 - nx, oy + y1 - ny, ox + x2 - nx, oy + y2 - ny, 'FORI');
+    arc(ox + x2, oy + y2, r, a - 90, a + 90, 'FORI'); arc(ox + x1, oy + y1, r, a + 90, a + 270, 'FORI');
+  };
   let offX = 0;
   for (const v of flatViews(p)) {
     if (v.outline === 'circle') {
       circle(offX + v.w / 2, v.w / 2, v.w / 2, 'TAGLIO');
       if (v.din > 0) circle(offX + v.w / 2, v.w / 2, v.din / 2, 'TAGLIO');
-      for (const h of v.holes) circle(offX + v.w / 2 + h.x, v.w / 2 + h.y, (h.kind === 'thread' ? (BOLTS[h.thread] || { tap: h.d }).tap : h.d) / 2, 'FORI');
+      for (const h of v.holes) holeOut(offX + v.w / 2, v.w / 2, h);
     } else {
       const r = Math.min(v.r || 0, v.w / 2, v.h / 2), w = v.w, h = v.h, o = offX;
       if (r > 0) {
         line(o + r, 0, o + w - r, 0); line(o + w, r, o + w, h - r); line(o + w - r, h, o + r, h); line(o, h - r, o, r);
         arc(o + w - r, r, r, 270, 360); arc(o + w - r, h - r, r, 0, 90); arc(o + r, h - r, r, 90, 180); arc(o + r, r, r, 180, 270);
       } else { line(o, 0, o + w, 0); line(o + w, 0, o + w, h); line(o + w, h, o, h); line(o, h, o, 0); }
-      for (const hh of v.holes) circle(o + hh.x, hh.y, (hh.kind === 'thread' ? (BOLTS[hh.thread] || { tap: hh.d }).tap : hh.d) / 2, 'FORI');
+      for (const hh of v.holes) holeOut(o, 0, hh);
     }
     text(offX, -8, 4, `${p.name} - ${v.title} - sp. ${v.t} mm - ${(MATERIALS[p.material] || MATERIALS.s235).name}`);
     offX += v.w + 30;

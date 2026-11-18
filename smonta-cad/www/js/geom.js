@@ -46,6 +46,17 @@ function circlePath(x, y, r, clockwise = true) {
   p.absarc(x, y, r, 0, Math.PI * 2, clockwise);
   return p;
 }
+/** Contorno di un foro o di un'asola (due semicerchi uniti da due rette) */
+function holePath(h) {
+  if (!h.len) return circlePath(h.x, h.y, h.d / 2);
+  const r = h.d / 2, a = (h.ang || 0) * Math.PI / 180, L = h.len / 2;
+  const c1 = [h.x - Math.cos(a) * L, h.y - Math.sin(a) * L], c2 = [h.x + Math.cos(a) * L, h.y + Math.sin(a) * L];
+  const p = new THREE.Path();
+  p.absarc(c2[0], c2[1], r, a - Math.PI / 2, a + Math.PI / 2, false);
+  p.absarc(c1[0], c1[1], r, a + Math.PI / 2, a + Math.PI * 1.5, false);
+  p.closePath();
+  return p;
+}
 function extrude(shape, depth) {
   const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: CURVE, steps: 1 });
   g.computeVertexNormals();
@@ -71,25 +82,25 @@ export function partGeometries(p) {
   switch (p.type) {
     case 'plate': {
       const s = roundedRectShape(q.w, q.h, q.r);
-      for (const h of p.holes) s.holes.push(circlePath(h.x, h.y, h.d / 2));
+      for (const h of p.holes) s.holes.push(holePath(h));
       list.push(extrude(s, q.t));
       break;
     }
     case 'disc': {
       const s = new THREE.Shape(); s.absarc(0, 0, q.d / 2, 0, Math.PI * 2, false);
       if (q.din > 0) s.holes.push(circlePath(0, 0, q.din / 2));
-      for (const h of p.holes) s.holes.push(circlePath(h.x, h.y, h.d / 2));
+      for (const h of p.holes) s.holes.push(holePath(h));
       list.push(extrude(s, q.t));
       break;
     }
     case 'angle': {
       const a = roundedRectShape(q.a, q.L, 0);
-      for (const h of p.holes.filter((h) => (h.face || 'A') === 'A')) a.holes.push(circlePath(h.x, h.y, h.d / 2));
+      for (const h of p.holes.filter((h) => (h.face || 'A') === 'A')) a.holes.push(holePath(h));
       list.push(extrude(a, q.t));
       // ala verticale: forma nel piano (L lungo y, altezza lungo z), da z = t a z = b
       const b = new THREE.Shape();
       b.moveTo(0, q.t); b.lineTo(q.L, q.t); b.lineTo(q.L, q.b); b.lineTo(0, q.b); b.lineTo(0, q.t);
-      for (const h of p.holes.filter((h) => h.face === 'B')) b.holes.push(circlePath(h.x, h.y, h.d / 2));
+      for (const h of p.holes.filter((h) => h.face === 'B')) b.holes.push(holePath(h));
       const gb = extrude(b, q.t);
       gb.applyMatrix4(new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0)));
       list.push(gb);

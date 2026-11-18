@@ -154,15 +154,29 @@ export function partMatrix(p) {
   return m;
 }
 
-export function addHole(p, x, y, d, face = 'A', kind = 'pass', thread = null) {
+export function addHole(p, x, y, d, face = 'A', kind = 'pass', thread = null, len = 0, ang = 0) {
   const h = { id: uid('h'), x: round2(x), y: round2(y), d: round2(d), face, kind, thread };
+  if (len > 0) { h.len = round2(len); h.ang = round2(ang); }
   p.holes.push(h);
   return h;
 }
 const round2 = (v) => Math.round(v * 100) / 100;
 
 /** Verifica che un foro stia dentro la faccia e non tocchi il bordo */
+/** Centri delle due estremità di un'asola (per un foro tondo coincidono) */
+export function holeEnds(h) {
+  const L = h.len || 0, a = (h.ang || 0) * Math.PI / 180;
+  return [[h.x - Math.cos(a) * L / 2, h.y - Math.sin(a) * L / 2], [h.x + Math.cos(a) * L / 2, h.y + Math.sin(a) * L / 2]];
+}
+/** Area del foro o dell'asola */
+export const holeArea = (h) => Math.PI * h.d * h.d / 4 + h.d * (h.len || 0);
+export const isSlot = (h) => (h.len || 0) > 0;
+
+/** Verifica che un foro (o asola) stia dentro la faccia e non tocchi il bordo */
 export function holeInside(p, h) {
+  return holeEnds(h).every(([x, y]) => circleInside(p, { ...h, x, y }));
+}
+function circleInside(p, h) {
   const q = p.params, r = h.d / 2;
   if (p.type === 'plate') {
     return h.x - r > 0.5 && h.y - r > 0.5 && h.x + r < q.w - 0.5 && h.y + r < q.h - 0.5;
@@ -202,7 +216,7 @@ export function patternCorners(p, { margin, d }) {
 // ------------------------------------------------------------------ masse
 export function area2D(p) {
   const q = p.params;
-  const holesA = p.holes.reduce((s, h) => s + Math.PI * h.d * h.d / 4, 0);
+  const holesA = p.holes.reduce((s, h) => s + holeArea(h), 0);
   if (p.type === 'plate') return q.w * q.h - (4 - Math.PI) * q.r * q.r - holesA;
   if (p.type === 'disc') return Math.PI / 4 * (q.d * q.d - q.din * q.din) - holesA;
   return 0;
@@ -210,7 +224,7 @@ export function area2D(p) {
 /** Volume in mm³ */
 export function volume(p) {
   const q = p.params;
-  const holesV = p.holes.reduce((s, h) => s + Math.PI * h.d * h.d / 4, 0);
+  const holesV = p.holes.reduce((s, h) => s + holeArea(h), 0);
   switch (p.type) {
     case 'plate': case 'disc': return area2D(p) * q.t;
     case 'angle': return ((q.a * q.t + (q.b - q.t) * q.t) * q.L) - holesV * q.t;
@@ -231,7 +245,7 @@ export function mass(p) {
 
 /** Firma per raggruppare pezzi identici nella distinta */
 export function signature(p) {
-  const holes = p.holes.map((h) => `${h.face || 'A'}:${h.x},${h.y},${h.d},${h.kind}`).sort().join(';');
+  const holes = p.holes.map((h) => `${h.face || 'A'}:${h.x},${h.y},${h.d},${h.kind},${h.len || 0},${h.ang || 0}`).sort().join(';');
   return `${p.type}|${p.material}|${JSON.stringify(p.params)}|${holes}`;
 }
 
@@ -245,7 +259,9 @@ export function bomDescription(p) {
     case 'pin': return `Perno cilindrico ISO 2338 Ø ${q.d} m6 × ${q.L}`;
   }
   const nh = p.holes.length;
-  return `${kindLabel(p)} ${describe(p)}${nh ? ` – ${nh} for${nh === 1 ? 'o' : 'i'}` : ''}`;
+  const ns = p.holes.filter(isSlot).length, nr = nh - ns;
+  const parts = [nr ? `${nr} for${nr === 1 ? 'o' : 'i'}` : '', ns ? `${ns} asol${ns === 1 ? 'a' : 'e'}` : ''].filter(Boolean).join(', ');
+  return `${kindLabel(p)} ${describe(p)}${parts ? ` – ${parts}` : ''}`;
 }
 
 export function clone(o) { return JSON.parse(JSON.stringify(o)); }

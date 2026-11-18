@@ -1,7 +1,7 @@
 // Accoppiamenti (foro su foro, faccia su faccia), bullonatura automatica e controlli.
 import * as THREE from 'three';
 import { BOLTS, PIN_DIAMETERS, PIN_LENGTHS, boltForHole, holeFit, stdLength, fmt } from './iso.js';
-import { holeAxes, newPart, uid, PART_TYPES, partMatrix, holeInside, faces } from './model.js';
+import { holeAxes, newPart, uid, PART_TYPES, partMatrix, holeInside, faces, holeEnds } from './model.js';
 import { localBox } from './geom.js';
 
 const v3 = (a) => new THREE.Vector3(...a);
@@ -262,7 +262,7 @@ export function runChecks(project) {
   // fori: dentro il pezzo, distanza dal bordo, sovrapposti
   for (const p of sheets) {
     for (const h of p.holes) {
-      if (!holeInside(p, h)) out.push({ level: 'err', text: `${p.name}: il foro Ø ${fmt(h.d)} in (${fmt(h.x)}; ${fmt(h.y)}) esce dal pezzo o tocca il bordo.`, parts: [p.id] });
+      if (!holeInside(p, h)) out.push({ level: 'err', text: `${p.name}: ${h.len ? 'l\'asola' : 'il foro'} Ø ${fmt(h.d)} in (${fmt(h.x)}; ${fmt(h.y)}) esce dal pezzo o tocca il bordo.`, parts: [p.id] });
       else {
         const e = edgeDistance(p, h);
         if (e !== null && h.d <= 30 && e < 1.2 * h.d - 0.01) out.push({ level: 'warn', text: `${p.name}: foro Ø ${fmt(h.d)} vicino al bordo (${fmt(e)} mm dal centro, per una vite ne servono almeno ${fmt(1.2 * h.d)}).`, parts: [p.id] });
@@ -272,7 +272,7 @@ export function runChecks(project) {
     for (let i = 0; i < p.holes.length; i++) for (let j = i + 1; j < p.holes.length; j++) {
       const a = p.holes[i], b = p.holes[j];
       if ((a.face || 'A') !== (b.face || 'A')) continue;
-      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      const dist = segDist(holeEnds(a), holeEnds(b));
       if (dist < (a.d + b.d) / 2 + 1) out.push({ level: 'err', text: `${p.name}: due fori si sovrappongono o sono troppo vicini (interasse ${fmt(dist)} mm).`, parts: [p.id] });
     }
   }
@@ -301,7 +301,13 @@ export function runChecks(project) {
 }
 
 const thicknessOfSheet = (p) => p.params.t || 0;
+function segDist([a1, a2], [b1, b2]) {
+  // distanza minima fra due segmenti nel piano (assi di due asole o due centri)
+  const d = (p, a, b) => { const vx = b[0] - a[0], vy = b[1] - a[1], L = vx * vx + vy * vy; const t = L ? Math.max(0, Math.min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / L)) : 0; return Math.hypot(p[0] - a[0] - t * vx, p[1] - a[1] - t * vy); };
+  return Math.min(d(a1, b1, b2), d(a2, b1, b2), d(b1, a1, a2), d(b2, a1, a2));
+}
 function edgeDistance(p, h) {
+  if (h.len) return Math.min(...holeEnds(h).map(([x, y]) => edgeDistance(p, { ...h, x, y, len: 0 })));
   const q = p.params;
   if (p.type === 'plate') return Math.min(h.x, h.y, q.w - h.x, q.h - h.y);
   if (p.type === 'disc') return q.d / 2 - Math.hypot(h.x, h.y);
