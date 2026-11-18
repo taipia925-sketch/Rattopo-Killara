@@ -124,6 +124,33 @@ function bindTop() {
   $('#btnRight').onclick = () => togglePanel('Right');
   $('#scrim').onclick = () => togglePanel(null);
   $('#btnFit').onclick = () => viewer.fit(store.project, null);
+  $('#btnHelp').onclick = showHelp;
+}
+
+function showHelp() {
+  modal('Guida rapida', (d, done) => {
+    d.style.width = 'min(620px, 100%)';
+    const sec = (t, items) => h('div', {}, h('div', { class: 'secTitle' }, t), h('ol', { class: 'steps' }, ...items.map((x) => h('li', {}, x))));
+    d.append(sec('Costruire', [
+      'Tocca un pezzo nella Libreria: lastre, dischi, fazzoletti, profili, viti e perni.',
+      'Cambia misure, spessore e materiale nel pannello a destra (si possono scrivere anche conti: 200/2).',
+      'Foro: tocca la lastra dove vuoi il foro. Scegli prima se è per una vite, un\'asola o filettato. Per schemi regolari usa Griglia, Circonferenza o Agli angoli.',
+      'Accoppia: tocca un foro del pezzo fermo, poi un foro del pezzo da spostare. Si allineano e combaciano anche gli altri fori alla stessa distanza.',
+      'Bullona: tocca un foro e la vite giusta (con lunghezza, rondelle e dado) attraversa tutte le lastre. "Fissa tutti" lo fa per tutti i fori allineati.',
+    ]));
+    d.append(sec('Controllare e consegnare', [
+      'In basso a destra i Controlli segnalano fori fuori misura, troppo vicini al bordo, disallineati, viti corte e pezzi che si compenetrano.',
+      'Tavola 2D: tavola d\'assieme con viste e distinta, poi la tavola quotata di ogni lastra con il file DXF per il taglio laser.',
+      'Distinta: quantità, materiali, masse e coppie di serraggio; si esporta per Excel.',
+      'Montaggio: i passi si creano da soli, in avanti o al contrario per lo smontaggio. Puoi collegare un video.',
+    ]));
+    d.append(sec('Gesti', [
+      'Un dito: ruota la vista. Due dita: sposta e ingrandisci. Tocco: seleziona.',
+      'Sposta/Ruota: trascina le frecce o gli anelli, oppure usa i campi e i pulsanti ±90°.',
+      'Indietro (Android) o Esc: annulla lo strumento e chiude i pannelli. Ctrl+Z / Ctrl+Y: annulla e ripeti.',
+    ]));
+    d.append(h('div', { class: 'acts' }, h('button', { class: 'btn primary', onclick: () => done(true) }, 'Ho capito')));
+  });
 }
 function togglePanel(which) {
   const b = document.body;
@@ -213,7 +240,9 @@ function applyXray() {
 // ===================================================================== pannello sinistro
 function renderLeft() {
   const L = $('#left'); const sc = L.scrollTop; L.innerHTML = '';
-  if (isNarrow()) L.append(h('button', { class: 'btn', style: { width: '100%', marginBottom: '12px', justifyContent: 'center' }, onclick: () => { saveWithThumb(); togglePanel(null); showHome(true); }, html: `${icon('home')}I tuoi progetti` }));
+  if (isNarrow()) L.append(h('div', { class: 'row', style: { marginBottom: '12px', flexWrap: 'nowrap' } },
+    h('button', { class: 'btn grow', style: { justifyContent: 'center' }, onclick: () => { saveWithThumb(); togglePanel(null); showHome(true); }, html: `${icon('home')}Progetti` }),
+    h('button', { class: 'btn grow', style: { justifyContent: 'center' }, onclick: () => { togglePanel(null); showHelp(); }, html: `${icon('help')}Guida` })));
   L.append(h('h2', {}, 'Libreria'));
   for (const g of LIBRARY) {
     L.append(h('div', { class: 'secTitle' }, g.group));
@@ -392,10 +421,11 @@ function partPanel(p) {
   const nameIn = h('input', { value: p.name, 'aria-label': 'Nome del pezzo' });
   nameIn.onchange = () => { const v = nameIn.value.trim(); if (v) mutate('rinomina', () => { p.name = v; }); };
   out.push(h('div', { class: 'head' }, h('div', { class: 'tile', html: icon(PART_TYPES[p.type].icon) }),
-    h('div', { class: 't' }, nameIn, h('small', {}, `${kindLabel(p)} · ${describe(p)}`)),
-    h('button', { class: 'btn ghost icon', title: 'Duplica', onclick: () => duplicate([p]), html: icon('copy') }),
-    h('button', { class: 'btn ghost icon', title: 'Serie di copie', onclick: () => series([p]), html: icon('layers') }),
-    h('button', { class: 'btn ghost icon danger', title: 'Elimina', onclick: () => removeParts([p]), html: icon('trash') })));
+    h('div', { class: 't' }, nameIn, h('small', {}, `${kindLabel(p)} · ${describe(p)}`))));
+  out.push(h('div', { class: 'row' },
+    h('button', { class: 'btn small', title: 'Duplica', onclick: () => duplicate([p]), html: `${icon('copy')}Duplica` }),
+    h('button', { class: 'btn small', title: 'Serie di copie', onclick: () => series([p]), html: `${icon('layers')}Serie` }),
+    h('button', { class: 'btn small danger', title: 'Elimina', onclick: () => removeParts([p]), html: `${icon('trash')}Elimina` })));
   // materiale
   const ms = h('select', { class: 'select' }, ...Object.entries(MATERIALS).map(([k, m]) => h('option', { value: k, selected: k === p.material }, `${m.name} · ${fmt(m.rho, 2)} g/cm³`)));
   ms.onchange = () => mutate('materiale', () => { p.material = ms.value; });
@@ -983,6 +1013,12 @@ function drawOverlay() {
       viewer.label(`${fmt(a.distanceTo(b), 1)} mm`, a.clone().add(b).multiplyScalar(0.5));
     }
   }
+  // misure del pezzo selezionato, scritte sopra il pezzo
+  const sp = selectedParts();
+  if (sp.length === 1 && !sp[0].stack && ['select', 'move', 'rotate'].includes(app.tool)) {
+    const bx = worldBox(sp[0]); const top = bx.getCenter(new THREE.Vector3()); top.z = bx.max.z;
+    viewer.label(`${sp[0].name}: ${describe(sp[0])}`, top, 'tag dark');
+  }
   // fori del pezzo selezionato (strumenti di foratura/accoppiamento)
   if (['hole', 'mate', 'bolt'].includes(app.tool)) {
     for (const p of selectedParts()) if (isSheet(p)) for (const ax of holeAxes(p)) viewer.addOverlay(holeMarker(ax, 0x1f6feb));
@@ -1275,7 +1311,7 @@ function exportMenu(anchor) {
   popMenu(anchor, [
     { label: 'Progetto (.smonta)', sub: 'Da riaprire o dare a un collega', icon: 'save', run: () => saveFile(`${safeName(pr.name)}.smonta`, JSON.stringify(pr), 'application/json').then(savedMsg) },
     { label: 'Modello 3D STL', sub: 'Per stampa 3D o altri CAD', icon: 'cube', run: () => { const d = exportSTL(viewer.root); saveFile(`${safeName(pr.name)}.stl`, d, 'model/stl').then(savedMsg); } },
-    { label: 'Modello 3D GLB', sub: 'Per visualizzatori 3D e web', icon: 'layers', run: () => exportGLB(viewer.root).then((d) => saveFile(`${safeName(pr.name)}.glb`, d, 'model/gltf-binary')).then(savedMsg) },
+    { label: 'Modello 3D GLB', sub: 'Per visualizzatori 3D e web', icon: 'layers', run: () => exportGLB(viewer.root).then((d) => saveFile(`${safeName(pr.name)}.glb`, d, 'model/gltf-binary')).then(savedMsg).catch((e) => toast('Esportazione GLB non riuscita: ' + e.message, 'err')) },
     sel ? { label: `DXF di ${sel.name}`, sub: 'Profilo per taglio laser / plasma', icon: 'drawing', run: () => saveFile(`${safeName(sel.name)}.dxf`, partDXF(sel), 'application/dxf').then(savedMsg) } : null,
     { label: 'Distinta (Excel CSV)', icon: 'list', run: () => saveFile(`${safeName(pr.name)}_distinta.csv`, bomCSV(pr), 'text/csv').then(savedMsg) },
     { label: 'Immagine della vista', icon: 'eye', run: () => fetch(viewer.screenshot()).then((r) => r.blob()).then((b) => saveFile(`${safeName(pr.name)}.png`, b, 'image/png')).then(savedMsg) },
@@ -1354,7 +1390,7 @@ function showHome(show) {
     }
     inn.append(grid);
   }
-  inn.append(h('p', { class: 'muted', style: { marginTop: '30px', fontSize: '12px' } }, 'I progetti restano salvati su questo dispositivo. Per spostarli su un altro usa Esporta → Progetto (.smonta).'));
+  inn.append(h('p', { class: 'muted', style: { marginTop: '30px', fontSize: '12px' } }, 'I progetti restano salvati su questo dispositivo. Per spostarli su un altro usa Esporta → Progetto (.smonta). ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); showHelp(); } }, 'Guida rapida')));
   H.append(inn);
   H.classList.remove('hidden');
 }

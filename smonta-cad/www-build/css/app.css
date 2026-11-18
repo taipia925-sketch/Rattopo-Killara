@@ -250,7 +250,7 @@ body[data-tab=sheet] #btnLeft, body[data-tab=bom] #btnLeft, body[data-tab=assy] 
   #assy { flex-direction: row; align-items: flex-end; }
 }
 @media (max-width: 520px) {
-  #btnHome, .unitLbl { display: none !important; }
+  #btnHome, .unitLbl, #btnHelp { display: none !important; }
   .tab { padding: 6px 7px; }
 }
 @media print {

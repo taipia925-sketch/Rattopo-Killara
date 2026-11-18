@@ -1,0 +1,27 @@
+const { chromium } = require('playwright');
+(async () => {
+  const b = await chromium.launch({ args: ['--use-gl=swiftshader','--enable-unsafe-swiftshader'] });
+  const pg = await b.newPage({ viewport: { width: 1280, height: 800 } });
+  const errs = []; pg.on('pageerror', e => errs.push('PAGEERR: ' + e.message));
+  await pg.goto('http://127.0.0.1:8765/index.html'); await pg.waitForTimeout(700);
+  await pg.click('text=Nuovo progetto'); await pg.fill('.dialog input', 'Asole'); await pg.click('.dialog .btn.primary'); await pg.waitForTimeout(400);
+  await pg.click('[data-lib=rect]'); await pg.waitForTimeout(400);
+  const S = (fn, arg) => pg.evaluate(fn, arg);
+  const scr = async (x,y,z) => S(([x,y,z]) => { const v = window.smonta.viewer; const T = v.camera.position.constructor; const p = new T(x,y,z).project(v.camera); const r = v.renderer.domElement.getBoundingClientRect(); return [r.left + (p.x+1)/2*r.width, r.top + (1-p.y)/2*r.height]; }, [x,y,z]);
+  await S(() => window.smonta.setTool('hole')); await pg.click('.seg >> text=Asola'); await pg.waitForTimeout(200);
+  await S(() => window.smonta.viewer.fit(window.smonta.store.project,'top',false)); await pg.waitForTimeout(300);
+  let [x,y] = await scr(50, 50, 5); await pg.mouse.click(x,y); await pg.waitForTimeout(300);
+  await pg.selectOption('#right select >> nth=1', '90').catch(()=>{});
+  await pg.evaluate(() => { const s=[...document.querySelectorAll('#right select')].find(x=>[...x.options].some(o=>o.textContent==='Verticale')); s.value='90'; s.dispatchEvent(new Event('change')); });
+  await pg.waitForTimeout(200);
+  [x,y] = await scr(150, 50, 5); await pg.mouse.click(x,y); await pg.waitForTimeout(300);
+  console.log(JSON.stringify(await S(() => window.smonta.store.project.parts[0].holes)));
+  await S(() => window.smonta.viewer.fit(window.smonta.store.project,'iso',false)); await pg.waitForTimeout(300);
+  await pg.screenshot({ path: 't6_3d.png' });
+  await pg.click('[data-tab=sheet]'); await pg.waitForTimeout(600); await pg.screenshot({ path: 't6_tavola.png' });
+  const dxf = await S(async () => { const m = await import('/js/drawing.js'); return m.partDXF(window.smonta.store.project.parts[0]); });
+  console.log('DXF arcs', (dxf.match(/\nARC\r/g)||[]).length, 'lines', (dxf.match(/\nLINE\r/g)||[]).length, 'circles', (dxf.match(/\nCIRCLE\r/g)||[]).length);
+  console.log('massa', await S(async () => { const m = await import('/js/model.js'); return m.mass(window.smonta.store.project.parts[0]); }));
+  console.log(errs.join('\n') || 'nessun errore');
+  await b.close();
+})();

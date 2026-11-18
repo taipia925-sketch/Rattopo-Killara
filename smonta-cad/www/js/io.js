@@ -70,7 +70,9 @@ export function exportGLB(root) {
   return new Promise((resolve, reject) => {
     const ex = new GLTFExporter();
     const clone = root.clone(true);
-    clone.traverse((o) => { if (o.isLineSegments) o.parent && o.parent.remove(o); });
+    const lines = [];
+    clone.traverse((o) => { if (o.isLineSegments) lines.push(o); });
+    for (const l of lines) if (l.parent) l.parent.remove(l);
     // GLB usa Y in alto e metri
     const wrap = new THREE.Group(); wrap.add(clone); wrap.rotation.x = -Math.PI / 2; wrap.scale.setScalar(0.001);
     ex.parse(wrap, (r) => resolve(r), (e) => reject(e), { binary: true });

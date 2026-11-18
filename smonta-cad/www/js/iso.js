@@ -50,6 +50,8 @@ export function boltForHole(d) {
     const b = BOLTS[k];
     if (d + 1e-6 >= b.clear[0]) best = k;
   }
+  // un foro molto più grande del passaggio della vite più grossa non è un foro per vite (es. foro per un albero)
+  if (best && d > BOLTS[best].clear[2] + 4) return null;
   return best;
 }
 
