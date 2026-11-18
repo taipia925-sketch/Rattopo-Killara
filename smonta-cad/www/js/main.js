@@ -6,7 +6,7 @@ import { LIBRARY, PART_TYPES, newPart, describe, kindLabel, mass, area2D, addHol
 import { BOLTS, BOLT_SIZES, BOLT_LENGTHS, PIN_DIAMETERS, PIN_LENGTHS, MATERIALS, boltForHole, holeFit, fmt } from './iso.js';
 import { pickHole, mateHoles, mateFaces, makeFastener, rebuildAllStacks, runChecks, isSheet, holeStack } from './mates.js';
 import { holeMarker, worldBox } from './geom.js';
-import { drawingSVG, partDXF, canDraw, holeGroups } from './drawing.js';
+import { drawingSVG, partDXF, canDraw, holeGroups, assemblySVG } from './drawing.js';
 import { currentSteps, autoSteps, explodeVectors, bom, bomCSV } from './assembly.js';
 import { saveFile, openFile, exportSTL, exportGLB, safeName } from './io.js';
 import { buildExample } from './example.js';
@@ -145,6 +145,7 @@ function setTab(tab) {
   $('#chips').classList.toggle('hidden', tab === 'sheet' || tab === 'bom');
   $('#btnFit').classList.toggle('hidden', tab === 'sheet' || tab === 'bom');
   if (tab !== 'assy') { stopAssy(); viewer.offsets.clear(); for (const p of store.project.parts) viewer.applyOffset(p.id); applyExplode(); }
+  if (tab === 'sheet') { const sp = selectedParts().find(canDraw); app.sheetSel = sp ? sp.id : 'assy'; }
   if (tab === 'assy') { setTool('select'); app.assy.steps = currentSteps(store.project); app.assy.i = 0; app.assy.t = 1; renderAssy(); applyAssy(); }
   setTip();
   togglePanel(null);
@@ -958,10 +959,27 @@ function renderSheet() {
   const box = $('#sheetView'); box.innerHTML = '';
   const pr = store.project;
   const drawable = pr.parts.filter((p) => canDraw(p));
-  if (!drawable.length) { box.append(h('div', { class: 'empty', html: `${icon('drawing')}<h3>Nessuna lastra da disegnare</h3><p>Aggiungi lastre, dischi o angolari nella scheda Progetta: qui comparirà la tavola quotata, pronta per l'officina o per il taglio laser.</p>` })); return; }
-  let p = selectedParts().find(canDraw) || drawable[0];
-  const sel = h('select', { class: 'select', style: { width: 'auto', minWidth: '220px' } }, ...drawable.map((x) => h('option', { value: x.id, selected: x.id === p.id }, `${x.name} – ${describe(x)}`)));
-  sel.onchange = () => { select(sel.value); renderSheet(); };
+  if (!pr.parts.length) { box.append(h('div', { class: 'empty', html: `${icon('drawing')}<h3>Niente da disegnare</h3><p>Aggiungi lastre, dischi o angolari nella scheda Progetta: qui compariranno la tavola d'assieme e le tavole quotate di ogni pezzo, pronte per l'officina o per il taglio laser.</p>` })); return; }
+  if (!app.sheetSel || (app.sheetSel !== 'assy' && !drawable.some((x) => x.id === app.sheetSel))) app.sheetSel = (selectedParts().find(canDraw) || {}).id || 'assy';
+  const sel = h('select', { class: 'select', style: { width: 'auto', minWidth: '220px' } },
+    h('option', { value: 'assy', selected: app.sheetSel === 'assy' }, `Tavola d'assieme – ${pr.name}`),
+    ...drawable.map((x) => h('option', { value: x.id, selected: x.id === app.sheetSel }, `${x.name} – ${describe(x)}`)));
+  sel.onchange = () => { app.sheetSel = sel.value; if (sel.value !== 'assy') select(sel.value); renderSheet(); };
+  if (app.sheetSel === 'assy') {
+    let svg = null;
+    try { svg = assemblySVG(pr, viewer, bom(pr), worldBox, THREE); } catch (err) { console.error(err); }
+    if (!svg) { box.append(h('div', { class: 'empty' }, 'Non riesco a preparare la tavola d\'assieme.')); return; }
+    const nm = `${safeName(pr.name)}_assieme`;
+    box.append(h('div', { class: 'pageBar' }, sel, h('span', { class: 'grow' }),
+      h('button', { class: 'btn', onclick: () => saveFile(`${nm}.svg`, svg, 'image/svg+xml').then(savedMsg), html: `${icon('drawing')}SVG` }),
+      h('button', { class: 'btn', onclick: () => saveSheetPNG(svg, { name: nm.replace(/_tavola$/, '') }).then(savedMsg), html: `${icon('save')}Immagine` }),
+      h('button', { class: 'btn', onclick: () => printSVG(svg), html: `${icon('print')}Stampa / PDF` }),
+      drawable.length ? h('button', { class: 'btn', onclick: allDXF, html: `${icon('layers')}Tutte le lastre in DXF` }) : null));
+    box.append(h('div', { class: 'sheetWrap', html: svg }));
+    box.append(h('div', { class: 'pageBar', style: { marginTop: '12px' } }, h('span', { class: 'muted' }, 'Scegli un pezzo dal menu in alto per la sua tavola quotata con i fori e il file DXF per il taglio.')));
+    return;
+  }
+  const p = drawable.find((x) => x.id === app.sheetSel);
   const svg = drawingSVG(p, pr);
   box.append(h('div', { class: 'pageBar' }, sel, h('span', { class: 'grow' }),
     h('button', { class: 'btn', onclick: () => saveFile(`${safeName(p.name)}.dxf`, partDXF(p), 'application/dxf').then(savedMsg), html: `${icon('export')}DXF per taglio` }),

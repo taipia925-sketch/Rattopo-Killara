@@ -85,7 +85,7 @@ export function describe(p) {
   switch (p.type) {
     case 'plate': return `${f(q.w)} × ${f(q.h)} × ${f(q.t)} mm`;
     case 'disc': return q.din > 0 ? `Ø ${f(q.d)} / Ø ${f(q.din)} × ${f(q.t)} mm` : `Ø ${f(q.d)} × ${f(q.t)} mm`;
-    case 'angle': return `L ${f(q.a)} × ${f(q.b)} × ${f(q.t)} – lungo ${f(q.L)} mm`;
+    case 'angle': return `${f(q.a)} × ${f(q.b)} × ${f(q.t)} – lungo ${f(q.L)} mm`;
     case 'tube': return q.din > 0 ? `Ø ${f(q.d)} × ${f((q.d - q.din) / 2)} – lungo ${f(q.L)} mm` : `Tondo Ø ${f(q.d)} – lungo ${f(q.L)} mm`;
     case 'bolt': return `${q.size} × ${q.L}`;
     case 'nut': return `${q.size}`;

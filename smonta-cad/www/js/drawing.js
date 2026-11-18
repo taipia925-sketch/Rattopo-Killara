@@ -212,3 +212,105 @@ export function partDXF(p) {
 
 export function canDraw(p) { return ['plate', 'disc', 'angle'].includes(p.type); }
 export { faces };
+
+// ------------------------------------------------------------------ tavola d'assieme
+/** Foglio A4 con viste ortogonali (fronte, lato, pianta), vista isometrica con i numeri di posizione,
+ * quote d'ingombro e distinta. viewer: la vista 3D (per disegnare le immagini), b: risultato di bom(). */
+export function assemblySVG(project, viewer, b, worldBox, THREE) {
+  const W = 297, H = 210, M = 10;
+  const box = new THREE.Box3();
+  for (const p of project.parts) if (!p.hidden) box.union(worldBox(p));
+  if (box.isEmpty()) return null;
+  const sz = box.getSize(new THREE.Vector3());
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const views = {
+    front: { dir: V(0, -1, 0), up: V(0, 0, 1), title: 'Vista frontale', hor: ['x', sz.x], ver: ['z', sz.z] },
+    side: { dir: V(1, 0, 0), up: V(0, 0, 1), title: 'Vista laterale (da destra)', hor: ['y', sz.y], ver: ['z', sz.z] },
+    top: { dir: V(0, 0, 1), up: V(0, 1, 0), title: 'Vista dall\'alto', hor: ['x', sz.x], ver: ['y', sz.y] },
+  };
+  // celle: colonna sinistra fronte/pianta, colonna destra lato/isometrica
+  const cellW = 92, cellH = 78, x0 = M + 6, y0 = M + 8;
+  const cells = { front: [x0, y0], side: [x0 + cellW + 6, y0], top: [x0, y0 + cellH + 8], iso: [x0 + cellW + 6, y0 + cellH + 8] };
+  // scala unificata comune alle tre viste
+  const need = (v) => [(v.hor[1]) * 1.12, (v.ver[1]) * 1.12];
+  let sc = SCALES[SCALES.length - 1];
+  for (const s of SCALES) {
+    const k = s[0] / s[1];
+    if (Object.values(views).every((v) => { const [a, c] = need(v); return a * k <= cellW - 16 && c * k <= cellH - 18; })) { sc = s; break; }
+  }
+  const k = sc[0] / sc[1];
+  const out = [];
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${W} ${H}" width="${W}mm" height="${H}mm" font-family="Inter, Arial, sans-serif">`);
+  out.push(`<defs><marker id="ar" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1.5 L10 5 L0 8.5 z" fill="#111"/></marker></defs>`);
+  out.push(`<rect width="${W}" height="${H}" fill="#fff"/><rect x="${M}" y="${M}" width="${W - 2 * M}" height="${H - 2 * M}" fill="none" stroke="#111" stroke-width="0.5"/>`);
+  const thin = 'stroke="#111" stroke-width="0.18" fill="none"';
+  const T = (x, y, s, size = 2.5, anchor = 'middle', rot = 0, weight = 400) =>
+    `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" font-size="${size}" text-anchor="${anchor}" font-weight="${weight}" ${rot ? `transform="rotate(${rot} ${x.toFixed(2)} ${y.toFixed(2)})"` : ''} fill="#111">${esc(s)}</text>`;
+  for (const [key, v] of Object.entries(views)) {
+    const img = viewer.renderOrtho(v.dir, v.up, box, 700, 0.02);
+    const iw = img.w * k, ih = img.h * k;
+    const [cx, cy] = cells[key];
+    const ix = cx + (cellW - iw) / 2 + 4, iy = cy + 6 + (cellH - 18 - ih) / 2;
+    out.push(T(cx + cellW / 2, cy + 2, v.title, 2.8, 'middle', 0, 600));
+    out.push(`<image x="${ix.toFixed(2)}" y="${iy.toFixed(2)}" width="${iw.toFixed(2)}" height="${ih.toFixed(2)}" xlink:href="${img.url}" href="${img.url}" preserveAspectRatio="none"/>`);
+    // quote d'ingombro dagli spigoli del box
+    const P = (pt) => { const [u, w] = img.map(pt); return [ix + u * iw, iy + w * ih]; };
+    const cH = [P(box.min), P(box.max)];
+    const xs = [cH[0][0], cH[1][0]].sort((a, b) => a - b), ys = [cH[0][1], cH[1][1]].sort((a, b) => a - b);
+    const yd = ys[1] + 6, xd = xs[0] - 6;
+    out.push(`<path d="M${xs[0]} ${ys[1]} L${xs[0]} ${yd + 1.5} M${xs[1]} ${ys[1]} L${xs[1]} ${yd + 1.5}" ${thin}/><path d="M${xs[0]} ${yd} L${xs[1]} ${yd}" ${thin} marker-start="url(#ar)" marker-end="url(#ar)"/>`);
+    out.push(T((xs[0] + xs[1]) / 2, yd - 0.9, fmt(v.hor[1])));
+    out.push(`<path d="M${xs[0]} ${ys[0]} L${xd - 1.5} ${ys[0]} M${xs[0]} ${ys[1]} L${xd - 1.5} ${ys[1]}" ${thin}/><path d="M${xd} ${ys[0]} L${xd} ${ys[1]}" ${thin} marker-start="url(#ar)" marker-end="url(#ar)"/>`);
+    out.push(T(xd - 0.9, (ys[0] + ys[1]) / 2, fmt(v.ver[1]), 2.5, 'middle', -90));
+  }
+  // vista isometrica con i numeri di posizione
+  {
+    const [cx, cy] = cells.iso;
+    const img = viewer.renderOrtho(V(0.62, -0.78, 0.55), V(0, 0, 1), box, 900, 0.04);
+    const fit = Math.min((cellW - 8) / img.w, (cellH - 12) / img.h);
+    const iw = img.w * fit, ih = img.h * fit, ix = cx + (cellW - iw) / 2 + 2, iy = cy + 6 + (cellH - 10 - ih) / 2;
+    out.push(T(cx + cellW / 2, cy + 2, 'Vista isometrica (non in scala)', 2.8, 'middle', 0, 600));
+    out.push(`<image x="${ix.toFixed(2)}" y="${iy.toFixed(2)}" width="${iw.toFixed(2)}" height="${ih.toFixed(2)}" xlink:href="${img.url}" href="${img.url}" preserveAspectRatio="none"/>`);
+    const mid = [ix + iw / 2, iy + ih / 2];
+    const used = [];
+    for (const r of b.rows) {
+      const p = project.parts.find((x) => x.id === r.ids[0]);
+      if (!p || p.hidden) continue;
+      const c = worldBox(p).getCenter(new THREE.Vector3());
+      const [u, w] = img.map(c); const px = ix + u * iw, py = iy + w * ih;
+      let dx = px - mid[0], dy = py - mid[1]; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
+      let bx = px + dx * 11, by = py + dy * 9;
+      for (let t = 0; t < 8 && used.some(([ux, uy]) => Math.hypot(ux - bx, uy - by) < 7); t++) { bx += dx * 4 - dy * 3; by += dy * 4 + dx * 3; }
+      bx = Math.max(cx + 4, Math.min(cx + cellW - 2, bx)); by = Math.max(cy + 7, Math.min(cy + cellH - 2, by));
+      used.push([bx, by]);
+      out.push(`<path d="M${px.toFixed(2)} ${py.toFixed(2)} L${bx.toFixed(2)} ${by.toFixed(2)}" stroke="#111" stroke-width="0.15"/><circle cx="${px.toFixed(2)}" cy="${py.toFixed(2)}" r="0.5" fill="#111"/>`);
+      out.push(`<circle cx="${bx.toFixed(2)}" cy="${by.toFixed(2)}" r="3.1" fill="#fff" stroke="#111" stroke-width="0.25"/>` + T(bx, by + 1, String(r.pos), 2.6, 'middle', 0, 600));
+    }
+  }
+  // distinta
+  const tx = W - M - 84, ty = M + 4, rowH = 4.1;
+  const rows = b.rows.slice(0, 26);
+  out.push(T(tx, ty + 3, 'Distinta materiali', 3, 'start', 0, 600));
+  out.push(`<rect x="${tx}" y="${ty + 5}" width="82" height="${(rows.length + 1) * rowH + 1}" fill="#fff" ${thin}/>`);
+  out.push(T(tx + 1.5, ty + 8.2, 'Pos.', 2.1, 'start', 0, 600) + T(tx + 13, ty + 8.2, 'Q.tà', 2.1, 'end', 0, 600) + T(tx + 15, ty + 8.2, 'Descrizione', 2.1, 'start', 0, 600) + T(tx + 81, ty + 8.2, 'kg', 2.1, 'end', 0, 600));
+  rows.forEach((r, i) => {
+    const y = ty + 8.2 + (i + 1) * rowH;
+    const d = r.desc.length > 46 ? r.desc.slice(0, 45) + '…' : r.desc;
+    out.push(`<path d="M${tx} ${y - 3.1} L${tx + 82} ${y - 3.1}" stroke="#111" stroke-width="0.08"/>`);
+    out.push(T(tx + 1.5, y, String(r.pos), 2.1, 'start') + T(tx + 13, y, String(r.qty), 2.1, 'end') + T(tx + 15, y, d, 1.9, 'start') + T(tx + 81, y, fmt(r.total, 2), 2.1, 'end'));
+  });
+  if (b.rows.length > rows.length) out.push(T(tx + 1.5, ty + 8.2 + (rows.length + 1.6) * rowH, `… altre ${b.rows.length - rows.length} righe nella scheda Distinta`, 2, 'start'));
+  // cartiglio
+  const bx = W - M - 150, by = H - M - 26;
+  out.push(`<rect x="${bx}" y="${by}" width="150" height="26" fill="#fff" stroke="#111" stroke-width="0.45"/>`);
+  out.push(`<path d="M${bx} ${by + 13} L${bx + 150} ${by + 13} M${bx + 90} ${by} L${bx + 90} ${by + 26} M${bx + 120} ${by + 13} L${bx + 120} ${by + 26}" ${thin}/>`);
+  const cell = (x, y, lab, val) => T(x + 1.5, y + 3, lab, 1.9, 'start') + T(x + 1.5, y + 9, val, 3, 'start', 0, 600);
+  out.push(cell(bx, by, 'Assieme', project.name.length > 40 ? project.name.slice(0, 39) + '…' : project.name));
+  out.push(cell(bx + 90, by, 'Ingombro (L × P × H)', `${fmt(sz.x, 0)} × ${fmt(sz.y, 0)} × ${fmt(sz.z, 0)}`));
+  out.push(cell(bx, by + 13, 'Pezzi / fissaggi', `${project.parts.filter((p) => !p.stack).length} pezzi, ${project.stacks.length} fissaggi`));
+  out.push(cell(bx + 90, by + 13, 'Massa', `${fmt(b.totalMass, 2)} kg`));
+  out.push(cell(bx + 120, by + 13, 'Scala viste', `${sc[0]}:${String(sc[1]).replace('.', ',')}`));
+  out.push(T(M + 4, H - M - 4, `Quote d'ingombro in mm · Smonta Studio · ${new Date().toLocaleDateString('it-IT')}`, 2, 'start'));
+  out.push('</svg>');
+  return out.join('');
+}

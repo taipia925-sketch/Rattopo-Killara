@@ -269,6 +269,38 @@ export class Viewer {
     m.position.copy(p); m.renderOrder = 21; this.overlay.add(m); return m;
   }
 
+  /** Vista ortogonale per le tavole: dir = verso la telecamera, up = alto dell'immagine.
+   * Ritorna l'immagine e la funzione che porta un punto 3D in coordinate 0..1 dell'immagine. */
+  renderOrtho(dir, up, box, wpx, pad = 0.06) {
+    const c = box.getCenter(new THREE.Vector3());
+    const d = dir.clone().normalize();
+    const f = d.clone().negate();
+    const r = f.clone().cross(up).normalize(), u = r.clone().cross(f).normalize();
+    let minR = Infinity, maxR = -Infinity, minU = Infinity, maxU = -Infinity;
+    for (let i = 0; i < 8; i++) {
+      const pt = new THREE.Vector3(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z).sub(c);
+      minR = Math.min(minR, pt.dot(r)); maxR = Math.max(maxR, pt.dot(r)); minU = Math.min(minU, pt.dot(u)); maxU = Math.max(maxU, pt.dot(u));
+    }
+    const w = (maxR - minR) * (1 + 2 * pad) || 10, h = (maxU - minU) * (1 + 2 * pad) || 10;
+    const cr = (maxR + minR) / 2, cu = (maxU + minU) / 2;
+    const center = c.clone().addScaledVector(r, cr).addScaledVector(u, cu);
+    const diag = box.getSize(new THREE.Vector3()).length() || 100;
+    const cam = new THREE.OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, diag * 10);
+    cam.up.copy(u); cam.position.copy(center).addScaledVector(d, diag * 3); cam.lookAt(center); cam.updateProjectionMatrix(); cam.updateMatrixWorld();
+    const hpx = Math.max(16, Math.round(wpx * h / w));
+    if (!this.off) { this.off = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); this.off.outputColorSpace = THREE.SRGBColorSpace; this.off.toneMapping = this.renderer.toneMapping; }
+    this.off.setPixelRatio(1); this.off.setSize(wpx, hpx, false);
+    const hide = [this.grid, this.ground, this.axes, this.overlay, this.gizmoHelper];
+    const vis = hide.map((o) => o.visible);
+    hide.forEach((o) => { o.visible = false; });
+    const bg = this.scene.background; this.scene.background = new THREE.Color('#ffffff');
+    this.off.render(this.scene, cam);
+    const url = this.off.domElement.toDataURL('image/png');
+    hide.forEach((o, i) => { o.visible = vis[i]; });
+    this.scene.background = bg;
+    return { url, wpx, hpx, w, h, map: (v) => { const p = v.clone().project(cam); return [(p.x + 1) / 2, (1 - p.y) / 2]; } };
+  }
+
   screenshot(w = 0, h = 0) {
     this.renderer.render(this.scene, this.camera);
     if (!w) return this.renderer.domElement.toDataURL('image/png');
