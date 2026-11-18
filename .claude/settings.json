@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Edit",
+      "Write",
+      "Read",
+      "Glob",
+      "Grep",
+      "NotebookEdit",
+      "mcp__Figma",
+      "mcp__claude-code-remote",
+      "Artifact",
+      "SendUserFile",
+      "TaskCreate",
+      "TaskUpdate",
+      "Skill"
+    ]
+  }
+}
