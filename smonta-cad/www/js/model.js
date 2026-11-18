@@ -10,6 +10,7 @@ export const PART_TYPES = {
   plate:  { label: 'Lastra',            icon: 'rect',   isSheet: true },
   disc:   { label: 'Disco / flangia',   icon: 'disc',   isSheet: true },
   angle:  { label: 'Angolare a L',      icon: 'angle',  isSheet: true },
+  poly:   { label: 'Lastra sagomata',   icon: 'gusset', isSheet: true },
   tube:   { label: 'Tubo / tondo',      icon: 'tube',   isSheet: false },
   bolt:   { label: 'Vite TE',           icon: 'bolt',   fastener: true },
   nut:    { label: 'Dado',              icon: 'nut',    fastener: true },
@@ -24,6 +25,8 @@ export const LIBRARY = [
     { key: 'rect',  name: 'Lastra rettangolare', type: 'plate', params: { w: 200, h: 100, t: 5, r: 0 }, sub: '200 × 100 × 5' },
     { key: 'disc',  name: 'Disco',               type: 'disc',  params: { d: 120, din: 0, t: 8 }, sub: 'Ø 120 × 8' },
     { key: 'ring',  name: 'Flangia forata',      type: 'disc',  params: { d: 120, din: 50, t: 8 }, sub: 'Ø 120 / Ø 50', pattern: { n: 4, pcd: 90, d: 9 } },
+    { key: 'gusset', name: 'Fazzoletto triangolare', type: 'poly', params: { t: 8, pts: [[0, 0], [120, 0], [0, 120]] }, sub: '120 × 120 × 8' },
+    { key: 'lplate', name: 'Lastra sagomata a L', type: 'poly', params: { t: 6, pts: [[0, 0], [150, 0], [150, 50], [50, 50], [50, 150], [0, 150]] }, sub: '150 × 150 × 6' },
   ]},
   { group: 'Profili', items: [
     { key: 'flat',  name: 'Barra piatta',        type: 'plate', params: { w: 300, h: 40, t: 8, r: 0 }, sub: '300 × 40 × 8' },
@@ -62,6 +65,7 @@ export function newPart(project, type, params = {}, extra = {}) {
 export function defaultParams(type) {
   switch (type) {
     case 'plate': return { w: 100, h: 100, t: 5, r: 0 };
+    case 'poly': return { t: 6, pts: [[0, 0], [100, 0], [0, 100]] };
     case 'disc': return { d: 120, din: 0, t: 8 };
     case 'angle': return { a: 40, b: 40, t: 4, L: 120 };
     case 'tube': return { d: 40, din: 32, L: 200 };
@@ -74,7 +78,7 @@ export function defaultParams(type) {
 }
 
 function autoName(project, type, params) {
-  const base = { plate: 'Lastra', disc: 'Disco', angle: 'Angolare', tube: 'Tubo', bolt: 'Vite', nut: 'Dado', washer: 'Rondella', pin: 'Perno' }[type] || 'Pezzo';
+  const base = type === 'poly' ? (params.pts && params.pts.length === 3 ? 'Fazzoletto' : 'Sagoma') : ({ plate: 'Lastra', disc: 'Disco', angle: 'Angolare', tube: 'Tubo', bolt: 'Vite', nut: 'Dado', washer: 'Rondella', pin: 'Perno' }[type] || 'Pezzo');
   project.counter[base] = (project.counter[base] || 0) + 1;
   return `${base} ${project.counter[base]}`;
 }
@@ -84,6 +88,7 @@ export function describe(p) {
   const q = p.params, f = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
   switch (p.type) {
     case 'plate': return `${f(q.w)} × ${f(q.h)} × ${f(q.t)} mm`;
+    case 'poly': { const b = polyBounds(q.pts); return `${f(b.w)} × ${f(b.h)} × ${f(q.t)} mm`; }
     case 'disc': return q.din > 0 ? `Ø ${f(q.d)} / Ø ${f(q.din)} × ${f(q.t)} mm` : `Ø ${f(q.d)} × ${f(q.t)} mm`;
     case 'angle': return `${f(q.a)} × ${f(q.b)} × ${f(q.t)} – lungo ${f(q.L)} mm`;
     case 'tube': return q.din > 0 ? `Ø ${f(q.d)} × ${f((q.d - q.din) / 2)} – lungo ${f(q.L)} mm` : `Tondo Ø ${f(q.d)} – lungo ${f(q.L)} mm`;
@@ -103,13 +108,14 @@ export function kindLabel(p) {
     return 'Lastra rettangolare';
   }
   if (p.type === 'disc') return p.params.din > 0 ? 'Flangia / anello' : 'Disco';
+  if (p.type === 'poly') return p.params.pts.length === 3 ? 'Fazzoletto triangolare' : `Lastra sagomata (${p.params.pts.length} lati)`;
   if (p.type === 'tube') return p.params.din > 0 ? 'Tubo tondo' : 'Tondo pieno';
   return PART_TYPES[p.type].label;
 }
 
 /** Spessore della lamiera (per pezzi in lastra) */
 export function thicknessOf(p) {
-  if (p.type === 'plate' || p.type === 'disc' || p.type === 'angle') return p.params.t;
+  if (p.type === 'plate' || p.type === 'disc' || p.type === 'angle' || p.type === 'poly') return p.params.t;
   return 0;
 }
 
@@ -121,6 +127,7 @@ export function faces(p) {
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
   switch (p.type) {
     case 'plate': return [{ id: 'A', origin: V(0, 0, 0), u: V(1, 0, 0), v: V(0, 1, 0), n: V(0, 0, 1), depth: q.t, size: [q.w, q.h] }];
+    case 'poly': { const b = polyBounds(q.pts); return [{ id: 'A', origin: V(0, 0, 0), u: V(1, 0, 0), v: V(0, 1, 0), n: V(0, 0, 1), depth: q.t, size: [b.maxX, b.maxY] }]; }
     case 'disc': return [{ id: 'A', origin: V(0, 0, 0), u: V(1, 0, 0), v: V(0, 1, 0), n: V(0, 0, 1), depth: q.t, size: [q.d, q.d], centered: true }];
     case 'angle': return [
       { id: 'A', origin: V(0, 0, 0), u: V(1, 0, 0), v: V(0, 1, 0), n: V(0, 0, 1), depth: q.t, size: [q.a, q.L] },
@@ -178,6 +185,7 @@ export function holeInside(p, h) {
 }
 function circleInside(p, h) {
   const q = p.params, r = h.d / 2;
+  if (p.type === 'poly') return pointInPoly(h.x, h.y, q.pts) && distToPoly(h.x, h.y, q.pts) > r + 0.5;
   if (p.type === 'plate') {
     return h.x - r > 0.5 && h.y - r > 0.5 && h.x + r < q.w - 0.5 && h.y + r < q.h - 0.5;
   }
@@ -218,6 +226,7 @@ export function area2D(p) {
   const q = p.params;
   const holesA = p.holes.reduce((s, h) => s + holeArea(h), 0);
   if (p.type === 'plate') return q.w * q.h - (4 - Math.PI) * q.r * q.r - holesA;
+  if (p.type === 'poly') return polyArea(q.pts) - holesA;
   if (p.type === 'disc') return Math.PI / 4 * (q.d * q.d - q.din * q.din) - holesA;
   return 0;
 }
@@ -226,7 +235,7 @@ export function volume(p) {
   const q = p.params;
   const holesV = p.holes.reduce((s, h) => s + holeArea(h), 0);
   switch (p.type) {
-    case 'plate': case 'disc': return area2D(p) * q.t;
+    case 'plate': case 'disc': case 'poly': return area2D(p) * q.t;
     case 'angle': return ((q.a * q.t + (q.b - q.t) * q.t) * q.L) - holesV * q.t;
     case 'tube': return Math.PI / 4 * (q.d * q.d - q.din * q.din) * q.L;
     case 'bolt': { const b = BOLTS[q.size]; return Math.PI / 4 * b.d * b.d * q.L * 0.92 + hexArea(b.s) * b.k; }
@@ -265,3 +274,44 @@ export function bomDescription(p) {
 }
 
 export function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+// ------------------------------------------------------------------ lastre sagomate (poligoni)
+export function polyBounds(pts) {
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  return { minX, maxX, minY, maxY, w: maxX - minX, h: maxY - minY };
+}
+export function polyArea(pts) {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) { const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length]; a += x1 * y2 - x2 * y1; }
+  return Math.abs(a) / 2;
+}
+export function pointInPoly(x, y, pts) {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [xi, yi] = pts[i], [xj, yj] = pts[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+export function distToPoly(x, y, pts) {
+  let d = Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length];
+    const vx = x2 - x1, vy = y2 - y1, L = vx * vx + vy * vy;
+    const t = L ? Math.max(0, Math.min(1, ((x - x1) * vx + (y - y1) * vy) / L)) : 0;
+    d = Math.min(d, Math.hypot(x - x1 - t * vx, y - y1 - t * vy));
+  }
+  return d;
+}
+/** Il contorno non deve incrociarsi su sé stesso */
+export function polySelfIntersects(pts) {
+  const n = pts.length;
+  const cross = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    if (Math.abs(i - j) <= 1 || (i === 0 && j === n - 1)) continue;
+    const a = pts[i], b = pts[(i + 1) % n], c = pts[j], d = pts[(j + 1) % n];
+    if (cross(a, b, c) * cross(a, b, d) < 0 && cross(c, d, a) * cross(c, d, b) < 0) return true;
+  }
+  return false;
+}

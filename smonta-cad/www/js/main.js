@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { Viewer } from './viewer.js';
 import { store, on, emit, mutate, checkpoint, commit, undo, redo, part, selectedParts, select, saveNow, listProjects, loadProject, deleteProject, setProject, createProject } from './store.js';
-import { LIBRARY, PART_TYPES, newPart, describe, kindLabel, mass, area2D, addHole, holeInside, patternGrid, patternCircle, patternCorners, faces, clone, uid, holeAxes, holeEnds } from './model.js';
+import { LIBRARY, PART_TYPES, newPart, describe, kindLabel, mass, area2D, addHole, holeInside, patternGrid, patternCircle, patternCorners, faces, clone, uid, holeAxes, holeEnds, polyArea, polySelfIntersects } from './model.js';
 import { BOLTS, BOLT_SIZES, BOLT_LENGTHS, PIN_DIAMETERS, PIN_LENGTHS, MATERIALS, boltForHole, holeFit, fmt } from './iso.js';
 import { pickHole, mateHoles, mateFaces, makeFastener, rebuildAllStacks, runChecks, isSheet, holeStack } from './mates.js';
 import { holeMarker, worldBox } from './geom.js';
@@ -220,7 +220,7 @@ function renderLeft() {
     for (const it of g.items) {
       const orange = ['bolt', 'nut', 'washer', 'pin'].includes(it.type);
       L.append(h('button', { class: 'libItem', 'data-lib': it.key, onclick: () => addFromLibrary(it) },
-        h('span', { class: 'tile' + (orange ? ' orange' : ''), html: icon(it.key === 'sq' ? 'square' : it.key === 'ring' ? 'ring' : it.key === 'flat' ? 'bar' : it.key === 'bar' ? 'tube' : PART_TYPES[it.type].icon) }),
+        h('span', { class: 'tile' + (orange ? ' orange' : ''), html: icon(it.key === 'sq' ? 'square' : it.key === 'ring' ? 'ring' : it.key === 'flat' ? 'bar' : it.key === 'bar' ? 'tube' : it.key === 'lplate' ? 'angle' : PART_TYPES[it.type].icon) }),
         h('span', {}, h('b', {}, it.name), h('small', {}, it.sub + ' mm'))));
     }
   }
@@ -394,6 +394,7 @@ function partPanel(p) {
   out.push(h('div', { class: 'head' }, h('div', { class: 'tile', html: icon(PART_TYPES[p.type].icon) }),
     h('div', { class: 't' }, nameIn, h('small', {}, `${kindLabel(p)} · ${describe(p)}`)),
     h('button', { class: 'btn ghost icon', title: 'Duplica', onclick: () => duplicate([p]), html: icon('copy') }),
+    h('button', { class: 'btn ghost icon', title: 'Serie di copie', onclick: () => series([p]), html: icon('layers') }),
     h('button', { class: 'btn ghost icon danger', title: 'Elimina', onclick: () => removeParts([p]), html: icon('trash') })));
   // materiale
   const ms = h('select', { class: 'select' }, ...Object.entries(MATERIALS).map(([k, m]) => h('option', { value: k, selected: k === p.material }, `${m.name} · ${fmt(m.rho, 2)} g/cm³`)));
@@ -404,6 +405,7 @@ function partPanel(p) {
   const set = (k, label) => (v) => mutate(label, (pr) => { p.params[k] = v; if (k === 'din' && v >= p.params.d) p.params.din = 0; rebuildAllStacks(pr); });
   const f = h('div', { class: 'fields' });
   if (p.type === 'plate') f.append(numField('Lunghezza', q.w, 'mm', set('w', 'lunghezza'), { min: 1 }), numField('Larghezza', q.h, 'mm', set('h', 'larghezza'), { min: 1 }), numField('Spessore', q.t, 'mm', set('t', 'spessore'), { min: 0.3 }), numField('Raggio spigoli', q.r || 0, 'mm', set('r', 'raggio'), { min: 0 }));
+  if (p.type === 'poly') f.append(numField('Spessore', q.t, 'mm', set('t', 'spessore'), { min: 0.3 }));
   if (p.type === 'disc') f.append(numField('Diametro', q.d, 'mm', set('d', 'diametro'), { min: 2 }), numField('Foro centrale', q.din, 'mm', set('din', 'foro centrale'), { min: 0 }), numField('Spessore', q.t, 'mm', set('t', 'spessore'), { min: 0.3 }));
   if (p.type === 'angle') f.append(numField('Ala A', q.a, 'mm', set('a', 'ala A'), { min: 5 }), numField('Ala B', q.b, 'mm', set('b', 'ala B'), { min: 5 }), numField('Spessore', q.t, 'mm', set('t', 'spessore'), { min: 0.5 }), numField('Lunghezza', q.L, 'mm', set('L', 'lunghezza'), { min: 5 }));
   if (p.type === 'tube') f.append(numField('Diametro esterno', q.d, 'mm', set('d', 'diametro'), { min: 1 }), numField('Diametro interno', q.din, 'mm', set('din', 'diametro interno'), { min: 0 }), numField('Lunghezza', q.L, 'mm', set('L', 'lunghezza'), { min: 1 }));
@@ -411,6 +413,7 @@ function partPanel(p) {
   if (p.type === 'nut' || p.type === 'washer') f.append(selField('Misura', q.size, BOLT_SIZES.map((s) => [s, s]), (v) => mutate('misura', () => { p.params.size = v; })));
   if (p.type === 'pin') f.append(selField('Diametro', q.d, PIN_DIAMETERS.map((s) => [s, `Ø ${s}`]), (v) => mutate('diametro', () => { p.params.d = +v; })), selField('Lunghezza', q.L, PIN_LENGTHS.map((s) => [s, `${s} mm`]), (v) => mutate('lunghezza', () => { p.params.L = +v; })));
   out.push(section('Misure', f));
+  if (p.type === 'poly') out.push(polySection(p));
   // fori
   if (isSheet(p)) out.push(holesSection(p));
   // posizione
@@ -418,7 +421,7 @@ function partPanel(p) {
   // dati
   const card = h('div', { class: 'card' });
   card.append(kv('Massa', `${fmt(mass(p), 3)} kg`));
-  if (p.type === 'plate' || p.type === 'disc') card.append(kv('Superficie (due facce)', `${fmt(area2D(p) * 2 / 1e6, 3)} m²`));
+  if (p.type === 'plate' || p.type === 'disc' || p.type === 'poly') card.append(kv('Superficie (due facce)', `${fmt(area2D(p) * 2 / 1e6, 3)} m²`));
   const st = store.project.stacks.filter((s) => s.plates.includes(p.id));
   if (st.length) card.append(kv('Fissaggi', summarizeStacks(st)));
   out.push(card);
@@ -428,6 +431,40 @@ function partPanel(p) {
   else if (isSheet(p) && p.holes.length) out.push(h('div', { class: 'card ok row', html: `${icon('check')}<span>Fori e distanze dai bordi a posto.</span>` }));
   if (canDraw(p)) out.push(h('button', { class: 'btn', onclick: () => setTab('sheet'), html: `${icon('drawing')}Tavola 2D quotata` }));
   return out;
+}
+
+/** Elenco dei vertici di una lastra sagomata, modificabili uno per uno */
+function polySection(p) {
+  const wrap = h('div', {});
+  wrap.append(h('div', { class: 'secTitle' }, `Contorno (${p.params.pts.length} vertici)`));
+  const apply = (fn, label) => {
+    const pts = clone(p.params.pts);
+    try { fn(pts); } catch { toast('Valore non valido.', 'err'); return; }
+    if (pts.length < 3) { toast('Servono almeno 3 vertici.', 'err'); return; }
+    if (polyArea(pts) < 1) { toast('Il contorno ha area nulla.', 'err'); return; }
+    if (polySelfIntersects(pts)) { toast('Il contorno si incrocerebbe su sé stesso.', 'err'); return; }
+    mutate(label, (pr) => { p.params.pts = pts.map(([x, y]) => [Math.round(x * 100) / 100, Math.round(y * 100) / 100]); rebuildAllStacks(pr); });
+  };
+  p.params.pts.forEach(([x, y], i) => {
+    wrap.append(h('div', { class: 'row', style: { flexWrap: 'nowrap', marginBottom: '6px' } },
+      h('b', { style: { width: '26px', fontSize: '12px' } }, `V${i + 1}`),
+      numField('X', x, 'mm', (v) => apply((pts) => { pts[i][0] = v; }, 'vertice')),
+      numField('Y', y, 'mm', (v) => apply((pts) => { pts[i][1] = v; }, 'vertice')),
+      h('button', { class: 'btn ghost icon', title: 'Togli vertice', style: { alignSelf: 'flex-end' }, onclick: () => apply((pts) => { pts.splice(i, 1); }, 'togli vertice'), html: icon('x') })));
+  });
+  wrap.append(h('div', { class: 'row' },
+    h('button', { class: 'btn small', onclick: () => apply((pts) => { const a = pts[pts.length - 1], b = pts[0]; pts.push([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]); }, 'aggiungi vertice'), html: `${icon('plus')}Vertice` }),
+    h('button', { class: 'btn small', onclick: async () => {
+      const r = await formBox('Smussa uno spigolo', [{ key: 'i', label: 'Vertice (numero)', value: 1 }, { key: 'c', label: 'Smusso', value: 10, unit: 'mm' }], 'Smussa');
+      if (!r) return;
+      apply((pts) => {
+        const i = Math.round(r.i) - 1; if (i < 0 || i >= pts.length) throw new Error();
+        const P = pts[i], A = pts[(i - 1 + pts.length) % pts.length], B = pts[(i + 1) % pts.length];
+        const toward = (Q) => { const dx = Q[0] - P[0], dy = Q[1] - P[1], L = Math.hypot(dx, dy); const c = Math.min(r.c, L * 0.45); return [P[0] + dx / L * c, P[1] + dy / L * c]; };
+        pts.splice(i, 1, toward(A), toward(B));
+      }, 'smusso');
+    }, html: `${icon('angle')}Smusso` })));
+  return wrap;
 }
 
 function summarizeStacks(st) {
@@ -593,7 +630,7 @@ function multiPanel(sel) {
   out.push(h('div', { class: 'head' }, h('div', { class: 'tile', html: icon('layers') }), h('div', { class: 't' }, h('b', { style: { fontSize: '15px' } }, `${sel.length} pezzi selezionati`), h('small', {}, `Massa totale ${fmt(sel.reduce((s, p) => s + mass(p), 0), 3)} kg`))));
   const mains = sel.filter((x) => !x.stack);
   if (mains.length) out.push(placeSection(mains));
-  out.push(h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => duplicate(mains), html: `${icon('copy')}Duplica` }), h('button', { class: 'btn danger', onclick: () => removeParts(sel), html: `${icon('trash')}Elimina` })));
+  out.push(h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => duplicate(mains), html: `${icon('copy')}Duplica` }), h('button', { class: 'btn', onclick: () => series(mains), html: `${icon('layers')}Serie` }), h('button', { class: 'btn danger', onclick: () => removeParts(sel), html: `${icon('trash')}Elimina` })));
   return out;
 }
 
@@ -641,6 +678,29 @@ function duplicate(parts) {
     }
   });
   select(made);
+}
+/** Copie in fila: N copie a passo costante (con la loro foratura) */
+async function series(parts) {
+  if (!parts.length) return;
+  const b = new THREE.Box3(); for (const p of parts) b.union(worldBox(p));
+  const sz = b.getSize(new THREE.Vector3());
+  const r = await formBox('Serie di copie', [
+    { key: 'n', label: 'Numero di copie', value: 3 },
+    { key: 'dx', label: 'Passo X', value: fmtIn(Math.round(sz.x + 20)), unit: 'mm' }, { key: 'dy', label: 'Passo Y', value: 0, unit: 'mm' }, { key: 'dz', label: 'Passo Z', value: 0, unit: 'mm' },
+  ], 'Crea copie', 'Ogni copia viene spostata del passo indicato rispetto alla precedente.');
+  if (!r) return;
+  const n = Math.max(1, Math.min(200, Math.round(r.n)));
+  const made = [];
+  mutate('serie', (pr) => {
+    for (let k = 1; k <= n; k++) for (const p of parts) {
+      const c = clone(p); c.id = uid('p'); c.stack = null; c.name = `${p.name} (${k + 1})`;
+      c.holes = c.holes.map((x) => ({ ...x, id: uid('h') }));
+      c.pos = [p.pos[0] + r.dx * k, p.pos[1] + r.dy * k, p.pos[2] + r.dz * k];
+      pr.parts.push(c); made.push(c.id);
+    }
+  });
+  select(made);
+  toast(`Create ${made.length} copie.`, 'ok');
 }
 async function removeParts(parts) {
   const ids = new Set(parts.map((p) => p.id));

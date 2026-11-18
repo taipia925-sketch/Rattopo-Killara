@@ -86,6 +86,12 @@ export function partGeometries(p) {
       list.push(extrude(s, q.t));
       break;
     }
+    case 'poly': {
+      const s = new THREE.Shape(q.pts.map(([x, y]) => new THREE.Vector2(x, y)));
+      for (const h of p.holes) s.holes.push(holePath(h));
+      list.push(extrude(s, q.t));
+      break;
+    }
     case 'disc': {
       const s = new THREE.Shape(); s.absarc(0, 0, q.d / 2, 0, Math.PI * 2, false);
       if (q.din > 0) s.holes.push(circlePath(0, 0, q.din / 2));

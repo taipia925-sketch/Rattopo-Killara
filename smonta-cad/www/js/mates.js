@@ -1,7 +1,7 @@
 // Accoppiamenti (foro su foro, faccia su faccia), bullonatura automatica e controlli.
 import * as THREE from 'three';
 import { BOLTS, PIN_DIAMETERS, PIN_LENGTHS, boltForHole, holeFit, stdLength, fmt } from './iso.js';
-import { holeAxes, newPart, uid, PART_TYPES, partMatrix, holeInside, faces, holeEnds } from './model.js';
+import { holeAxes, newPart, uid, PART_TYPES, partMatrix, holeInside, faces, holeEnds, distToPoly } from './model.js';
 import { localBox } from './geom.js';
 
 const v3 = (a) => new THREE.Vector3(...a);
@@ -310,6 +310,7 @@ function edgeDistance(p, h) {
   if (h.len) return Math.min(...holeEnds(h).map(([x, y]) => edgeDistance(p, { ...h, x, y, len: 0 })));
   const q = p.params;
   if (p.type === 'plate') return Math.min(h.x, h.y, q.w - h.x, q.h - h.y);
+  if (p.type === 'poly') return distToPoly(h.x, h.y, q.pts);
   if (p.type === 'disc') return q.d / 2 - Math.hypot(h.x, h.y);
   if (p.type === 'angle') return (h.face || 'A') === 'A' ? Math.min(h.x - q.t, q.a - h.x, h.y, q.L - h.y) : Math.min(h.x, q.L - h.x, h.y - q.t, q.b - h.y);
   return null;

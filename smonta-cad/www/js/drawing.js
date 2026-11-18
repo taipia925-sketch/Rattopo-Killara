@@ -1,6 +1,6 @@
 // Tavola tecnica 2D quotata (SVG, foglio A4) ed esportazione DXF per taglio laser/plasma.
 import { MATERIALS, BOLTS, boltForHole, fmt } from './iso.js';
-import { kindLabel, describe, mass, area2D, faces, holeEnds } from './model.js';
+import { kindLabel, describe, mass, area2D, faces, holeEnds, polyBounds } from './model.js';
 
 const SCALES = [[5, 1], [2, 1], [1, 1], [1, 2], [1, 2.5], [1, 5], [1, 10], [1, 20], [1, 50]];
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
@@ -9,6 +9,7 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
 function flatViews(p) {
   const q = p.params;
   if (p.type === 'plate') return [{ title: 'Vista in pianta', w: q.w, h: q.h, outline: 'rect', r: q.r || 0, holes: p.holes, t: q.t }];
+  if (p.type === 'poly') { const b = polyBounds(q.pts); return [{ title: 'Vista in pianta', w: b.maxX, h: b.maxY, outline: 'poly', pts: q.pts, holes: p.holes, t: q.t }]; }
   if (p.type === 'disc') return [{ title: 'Vista in pianta', w: q.d, h: q.d, outline: 'circle', din: q.din, holes: p.holes, t: q.t, centered: true }];
   if (p.type === 'angle') return [
     { title: 'Ala A (orizzontale)', w: q.a, h: q.L, outline: 'rect', r: 0, holes: p.holes.filter((h) => (h.face || 'A') === 'A'), t: q.t, bendAt: 'left' },
@@ -94,6 +95,11 @@ export function drawingSVG(p, project, opts = {}) {
       }
     } else {
       const r = Math.min(v.r || 0, v.w / 2, v.h / 2) * k;
+      if (v.outline === 'poly') {
+        out.push(`<path d="M${v.pts.map(([x, y]) => `${X(x).toFixed(2)} ${Y(y).toFixed(2)}`).join(' L')} Z" ${S.thick}/>`);
+        // quote dei vertici che non stanno sul bordo esterno
+        v.pts.forEach(([x, y], i) => out.push(T(X(x) + (x > v.w / 2 ? 1.2 : -1.2), Y(y) + (y > v.h / 2 ? -1.2 : 3.2), `V${i + 1}`, 1.9, x > v.w / 2 ? 'start' : 'end')));
+      } else
       out.push(`<rect x="${X(0)}" y="${Y(v.h)}" width="${vw}" height="${vh}" rx="${r}" ${S.thick}/>`);
       if (v.bendAt === 'left') out.push(`<path d="M${X(v.t)} ${Y(0)} L${X(v.t)} ${Y(v.h)}" ${S.hidden}/>`);
       if (v.bendAt === 'bottom') out.push(`<path d="M${X(0)} ${Y(v.t)} L${X(v.w)} ${Y(v.t)}" ${S.hidden}/>`);
@@ -138,6 +144,12 @@ export function drawingSVG(p, project, opts = {}) {
     }
   });
   // tabella fori (in alto a destra) quando ci sono fori
+  if (p.type === 'poly') {
+    const vx = M + 6, vy = M + 6, rowH = 3.6, pts = p.params.pts.slice(0, 16);
+    out.push(`<rect x="${vx}" y="${vy}" width="42" height="${(pts.length + 1) * rowH + 1.5}" fill="#fff" ${S.thin}/>`);
+    out.push(T(vx + 2, vy + 2.8, 'Vertice', 2.2, 'start', 0, 600) + T(vx + 26, vy + 2.8, 'X', 2.2, 'end', 0, 600) + T(vx + 40, vy + 2.8, 'Y', 2.2, 'end', 0, 600));
+    pts.forEach(([x, y], i) => { const yy = vy + 2.8 + (i + 1) * rowH; out.push(T(vx + 2, yy, `V${i + 1}`, 2.2, 'start') + T(vx + 26, yy, fmt(x), 2.2, 'end') + T(vx + 40, yy, fmt(y), 2.2, 'end')); });
+  }
   if (holeTable.length) {
     const tx = W - M - 70, ty = M + 6, rowH = 3.6, rows = holeTable.slice(0, 22);
     out.push(`<rect x="${tx}" y="${ty}" width="66" height="${(rows.length + 1) * rowH + 1.5}" fill="#fff" ${S.thin}/>`);
@@ -197,7 +209,8 @@ export function partDXF(p) {
       for (const h of v.holes) holeOut(offX + v.w / 2, v.w / 2, h);
     } else {
       const r = Math.min(v.r || 0, v.w / 2, v.h / 2), w = v.w, h = v.h, o = offX;
-      if (r > 0) {
+      if (v.outline === 'poly') v.pts.forEach(([x1, y1], i) => { const [x2, y2] = v.pts[(i + 1) % v.pts.length]; line(o + x1, y1, o + x2, y2); });
+      else if (r > 0) {
         line(o + r, 0, o + w - r, 0); line(o + w, r, o + w, h - r); line(o + w - r, h, o + r, h); line(o, h - r, o, r);
         arc(o + w - r, r, r, 270, 360); arc(o + w - r, h - r, r, 0, 90); arc(o + r, h - r, r, 90, 180); arc(o + r, r, r, 180, 270);
       } else { line(o, 0, o + w, 0); line(o + w, 0, o + w, h); line(o + w, h, o, h); line(o, h, o, 0); }
@@ -210,7 +223,7 @@ export function partDXF(p) {
   return L.join('\r\n') + '\r\n';
 }
 
-export function canDraw(p) { return ['plate', 'disc', 'angle'].includes(p.type); }
+export function canDraw(p) { return ['plate', 'disc', 'angle', 'poly'].includes(p.type); }
 export { faces };
 
 // ------------------------------------------------------------------ tavola d'assieme
